@@ -172,6 +172,7 @@ function buildUserPayload(user, profile) {
     email: user.email,
     accountUsername,
     displayName,
+    avatarUrl: profile?.avatar_url || null,
     needsDisplayName: !displayName,
     displayNameChangedAt,
     nextDisplayNameChangeAt,
@@ -183,7 +184,7 @@ function buildUserPayload(user, profile) {
 async function fetchUserProfile(client, user) {
   const { data: profile } = await client
     .from('profiles')
-    .select('username, display_name, display_name_changed_at, preferences')
+    .select('username, display_name, display_name_changed_at, avatar_url, preferences')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -340,7 +341,7 @@ async function setDisplayName({ accessToken, displayName: rawDisplayName }) {
     .from('profiles')
     .update({ display_name: dCheck.displayName })
     .eq('id', currentUser.id)
-    .select('username, display_name, display_name_changed_at, preferences')
+    .select('username, display_name, display_name_changed_at, avatar_url, preferences')
     .single();
 
   if (updateErr || !updated) {
@@ -384,6 +385,47 @@ async function updateUserPreferences({ accessToken, preferences }) {
   return {
     ok: true,
     preferences: sanitizePreferences(updated.preferences),
+  };
+}
+
+async function updateUserAvatar({ accessToken, avatarUrl }) {
+  const verified = await verifyAccessToken(accessToken);
+  if (!verified.ok) return verified;
+
+  let cleanUrl = null;
+  if (avatarUrl !== null && avatarUrl !== '') {
+    if (typeof avatarUrl !== 'string' || avatarUrl.length > 500) {
+      return { ok: false, error: 'URL-ul imaginii nu este valid.' };
+    }
+    const expectedPrefix = `${SUPABASE_URL}/storage/v1/object/public/avatars/${verified.user.id}/`;
+    if (!avatarUrl.startsWith(expectedPrefix)) {
+      return { ok: false, error: 'Imaginea trebuie încărcată în profilul tău.' };
+    }
+    cleanUrl = avatarUrl;
+  }
+
+  const authedClient = createAuthenticatedClient(accessToken);
+  if (!authedClient) {
+    return { ok: false, error: 'Autentificare neconfigurată.' };
+  }
+
+  const { data: updated, error } = await authedClient
+    .from('profiles')
+    .update({ avatar_url: cleanUrl })
+    .eq('id', verified.user.id)
+    .select('username, display_name, display_name_changed_at, avatar_url, preferences')
+    .single();
+
+  if (error || !updated) {
+    return { ok: false, error: translateAuthError(error?.message) };
+  }
+
+  return {
+    ok: true,
+    user: buildUserPayload(
+      { id: verified.user.id, email: verified.user.email },
+      updated
+    ),
   };
 }
 
@@ -464,6 +506,7 @@ module.exports = {
   loginAccount,
   setDisplayName,
   updateUserPreferences,
+  updateUserAvatar,
   requestPasswordReset,
   verifyAccessToken,
 };

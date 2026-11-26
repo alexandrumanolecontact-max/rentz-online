@@ -272,6 +272,7 @@
           <span class="suit-red">♥</span> RENTZ
         </div>
         <div class="user-pill">
+          <span id="header-user-avatar" class="header-avatar-wrap"></span>
           <span class="user-pill-label">Jucător:</span>
           <strong id="display-nickname">Jucător</strong>
           <button id="btn-open-profile-stats" type="button" class="btn btn-sm btn-outline">
@@ -461,8 +462,32 @@
       </div>
 
       <div class="modal-body">
-        <!-- PANE 1: Cont, Nickname & Schimbare Parolă -->
+        <!-- PANE 1: Cont, Avatar, Nickname & Schimbare Parolă -->
         <div id="settings-pane-account" class="settings-pane">
+          <div class="settings-section">
+            <h4 class="settings-section-title">🖼️ Iconiță / Poză de Profil</h4>
+            <p class="settings-hint">
+              Alege orice imagine din telefon sau PC — va apărea lângă numele tău în lobby, la masa de joc și în clasament.
+            </p>
+            <div class="avatar-upload-row">
+              <div id="settings-avatar-preview" class="settings-avatar-preview"></div>
+              <div class="avatar-upload-actions">
+                <input
+                  id="input-avatar-file"
+                  type="file"
+                  accept="image/*"
+                  class="hidden"
+                />
+                <button type="button" id="btn-choose-avatar" class="btn btn-secondary btn-sm">
+                  📷 Încarcă Imagine
+                </button>
+                <button type="button" id="btn-remove-avatar" class="btn btn-danger-ghost btn-sm hidden">
+                  🗑️ Șterge Imaginea
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div class="settings-section">
             <h4 class="settings-section-title">Detalii Cont</h4>
             <div class="settings-info-grid">

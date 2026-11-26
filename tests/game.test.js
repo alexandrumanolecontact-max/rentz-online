@@ -559,7 +559,41 @@ async function runTests() {
   assert.strictEqual(matchEndSummary.players[3].place, 4);
   zeroWinGame.destroy();
 
-  console.log('11. Verificare server Express + Socket.IO si fisiere frontend...');
+  console.log('11. Verificare avatare profil in lobby, in timpul meciului si actualizare live la schimbarea pozei...');
+  const rmAv = new RoomManager();
+  const av1 = 'https://rziznxiotbnzexktzxgd.supabase.co/storage/v1/object/public/avatars/u1/avatar.webp?v=1';
+  const av2 = 'https://rziznxiotbnzexktzxgd.supabase.co/storage/v1/object/public/avatars/u2/avatar.webp?v=1';
+  rmAv.createRoom('u1', 'Alex', 's1', '', av1);
+  const avCode = rmAv.getRoomByPlayer('u1').code;
+  rmAv.joinRoom('u2', 'Mihai', avCode, 's2', '', av2);
+  rmAv.joinRoom('u3', 'Elena', avCode, 's3', '', null);
+
+  const lobbyView = rmAv.serializeRoomForPlayer(rmAv.rooms.get(avCode), 'u1');
+  assert.strictEqual(lobbyView.players[0].avatarUrl, av1);
+  assert.strictEqual(lobbyView.players[1].avatarUrl, av2);
+  assert.strictEqual(lobbyView.players[2].avatarUrl, null);
+
+  rmAv.toggleReady('u1');
+  rmAv.toggleReady('u2');
+  rmAv.toggleReady('u3');
+  const avRoom = rmAv.rooms.get(avCode);
+  avRoom.game.chooseBlindMode('u1', false);
+  avRoom.game.chooseSubgame('u1', 'whist');
+  avRoom.game.playCard('u1', avRoom.game.getPlayableTrickCards('u1')[0]);
+
+  const gameViewBefore = avRoom.game.getStateForPlayer('u2');
+  assert.strictEqual(gameViewBefore.players.find((p) => p.id === 'u1').avatarUrl, av1);
+  assert.strictEqual(gameViewBefore.currentTrick[0].avatarUrl, av1);
+
+  // u1 isi schimba avatarul in timpul meciului -> se propaga instant in camera si in joc
+  const av1Updated = 'https://rziznxiotbnzexktzxgd.supabase.co/storage/v1/object/public/avatars/u1/avatar.webp?v=2';
+  rmAv.reconnectSession('u1', 's1', 'Alex', '', av1Updated);
+  const gameViewAfter = avRoom.game.getStateForPlayer('u2');
+  assert.strictEqual(gameViewAfter.players.find((p) => p.id === 'u1').avatarUrl, av1Updated);
+  assert.strictEqual(gameViewAfter.standings.find((p) => p.id === 'u1').avatarUrl, av1Updated);
+  avRoom.game.destroy();
+
+  console.log('12. Verificare server Express + Socket.IO si fisiere frontend...');
   const { server, io } = require('../server/index');
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;

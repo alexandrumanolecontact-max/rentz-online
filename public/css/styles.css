@@ -635,6 +635,75 @@ body {
   flex-shrink: 0;
 }
 
+/* Avatare universale jucători (imagine custom sau inițială) */
+.player-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1.5px solid rgba(234, 191, 96, 0.55);
+  background: rgba(234, 191, 96, 0.18);
+  color: var(--gold-bright);
+  font-weight: 800;
+  vertical-align: middle;
+}
+
+.player-avatar-xxs {
+  width: 18px;
+  height: 18px;
+  font-size: 0.66rem;
+  border-width: 1px;
+}
+
+.player-avatar-xs {
+  width: 24px;
+  height: 24px;
+  font-size: 0.76rem;
+}
+
+.player-avatar-sm {
+  width: 28px;
+  height: 28px;
+  font-size: 0.84rem;
+}
+
+.player-avatar-md {
+  width: 36px;
+  height: 36px;
+  font-size: 0.96rem;
+}
+
+.player-avatar-lg {
+  width: 68px;
+  height: 68px;
+  font-size: 1.6rem;
+  border-width: 2px;
+  border-color: var(--gold-bright);
+}
+
+.inline-user-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.avatar-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.avatar-upload-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .seat-name {
   font-weight: 600;
   white-space: nowrap;

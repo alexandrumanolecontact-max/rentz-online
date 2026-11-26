@@ -47,7 +47,7 @@ class RoomManager {
     return this.rooms.get(code) || null;
   }
 
-  createRoom(playerId, rawNickname, socketId, accessToken = '') {
+  createRoom(playerId, rawNickname, socketId, accessToken = '', avatarUrl = null) {
     const nickname = this.sanitizeNickname(rawNickname);
     if (nickname.length < 2) {
       return { ok: false, error: 'Nickname-ul trebuie să aibă cel puțin 2 caractere.' };
@@ -67,6 +67,7 @@ class RoomManager {
         {
           id: playerId,
           nickname,
+          avatarUrl: avatarUrl || null,
           socketId,
           accessToken,
           ready: false,
@@ -82,7 +83,7 @@ class RoomManager {
     return { ok: true, room };
   }
 
-  joinRoom(playerId, rawNickname, rawCode, socketId, accessToken = '') {
+  joinRoom(playerId, rawNickname, rawCode, socketId, accessToken = '', avatarUrl = null) {
     const nickname = this.sanitizeNickname(rawNickname);
     if (nickname.length < 2) {
       return { ok: false, error: 'Nickname-ul trebuie să aibă cel puțin 2 caractere.' };
@@ -105,6 +106,7 @@ class RoomManager {
       existing.socketId = socketId;
       existing.connected = true;
       existing.nickname = nickname;
+      existing.avatarUrl = avatarUrl || null;
       if (accessToken) existing.accessToken = accessToken;
       return { ok: true, room };
     }
@@ -129,6 +131,7 @@ class RoomManager {
     room.players.push({
       id: playerId,
       nickname,
+      avatarUrl: avatarUrl || null,
       socketId,
       accessToken,
       ready: false,
@@ -139,7 +142,7 @@ class RoomManager {
     return { ok: true, room };
   }
 
-  reconnectSession(playerId, socketId, rawNickname, accessToken = '') {
+  reconnectSession(playerId, socketId, rawNickname, accessToken = '', avatarUrl = undefined) {
     this.clearDisconnectTimer(playerId);
     const room = this.getRoomByPlayer(playerId);
     if (!room) {
@@ -156,6 +159,12 @@ class RoomManager {
     player.connected = true;
     if (accessToken) {
       player.accessToken = accessToken;
+    }
+    if (avatarUrl !== undefined) {
+      player.avatarUrl = avatarUrl || null;
+      if (room.game) {
+        room.game.updatePlayerAvatar(playerId, player.avatarUrl);
+      }
     }
     const cleanNick = this.sanitizeNickname(rawNickname);
     if (cleanNick.length >= 2 && room.status === 'lobby') {
@@ -385,6 +394,7 @@ class RoomManager {
       players: room.players.map((p, index) => ({
         id: p.id,
         nickname: p.nickname,
+        avatarUrl: p.avatarUrl || null,
         ready: p.ready,
         connected: p.connected,
         isHost: p.id === room.hostId,

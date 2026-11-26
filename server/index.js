@@ -14,6 +14,7 @@ const {
   loginAccount,
   setDisplayName,
   updateUserPreferences,
+  updateUserAvatar,
   requestPasswordReset,
   verifyAccessToken,
 } = require('./auth');
@@ -101,6 +102,20 @@ app.put('/api/auth/preferences', async (req, res) => {
   }
 });
 
+app.put('/api/auth/avatar', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const result = await updateUserAvatar({
+      accessToken: token,
+      avatarUrl: req.body?.avatarUrl ?? null,
+    });
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (_err) {
+    res.status(500).json({ ok: false, error: 'Eroare internă la salvarea imaginii de profil.' });
+  }
+});
+
 app.post('/api/auth/forgot-password', async (req, res) => {
   try {
     const origin = `${req.protocol}://${req.get('host')}/`;
@@ -153,6 +168,7 @@ function broadcastRoomState(roomCode, notice = null) {
 io.on('connection', (socket) => {
   let playerId = null;
   let verifiedDisplayName = null;
+  let verifiedAvatarUrl = null;
   let latestAccessToken = '';
 
   socket.on('session:init', async (data = {}, ack) => {
@@ -167,6 +183,7 @@ io.on('connection', (socket) => {
     if (!verified.ok) {
       playerId = null;
       verifiedDisplayName = null;
+      verifiedAvatarUrl = null;
       latestAccessToken = '';
       if (typeof ack === 'function') {
         ack({ ok: false, authRequired: true, error: verified.error });
@@ -176,6 +193,7 @@ io.on('connection', (socket) => {
 
     playerId = verified.user.id;
     verifiedDisplayName = verified.user.displayName;
+    verifiedAvatarUrl = verified.user.avatarUrl || null;
     latestAccessToken = data.accessToken;
 
     // Dacă utilizatorul este la primul login și nu și-a ales încă numele din joc
@@ -195,7 +213,8 @@ io.on('connection', (socket) => {
       playerId,
       socket.id,
       verifiedDisplayName,
-      latestAccessToken
+      latestAccessToken,
+      verifiedAvatarUrl
     );
     if (recon.ok && recon.room) {
       broadcastRoomState(recon.room.code);
@@ -238,7 +257,13 @@ io.on('connection', (socket) => {
       }
       return;
     }
-    const res = roomManager.createRoom(playerId, verifiedDisplayName, socket.id, latestAccessToken);
+    const res = roomManager.createRoom(
+      playerId,
+      verifiedDisplayName,
+      socket.id,
+      latestAccessToken,
+      verifiedAvatarUrl
+    );
     if (!res.ok) {
       if (typeof ack === 'function') ack({ ok: false, error: res.error });
       return;
@@ -264,7 +289,8 @@ io.on('connection', (socket) => {
       verifiedDisplayName,
       data.code,
       socket.id,
-      latestAccessToken
+      latestAccessToken,
+      verifiedAvatarUrl
     );
     if (!res.ok) {
       if (typeof ack === 'function') ack({ ok: false, error: res.error });

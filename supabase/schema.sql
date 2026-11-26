@@ -13,6 +13,7 @@ create table if not exists public.profiles (
   display_name text check (display_name is null or char_length(trim(display_name)) between 2 and 18),
   display_name_lower text generated always as (lower(trim(display_name))) stored unique,
   display_name_changed_at timestamptz,
+  avatar_url text,
   preferences jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
@@ -23,7 +24,7 @@ alter table public.profiles enable row level security;
 grant usage on schema public to anon, authenticated;
 grant select on table public.profiles to anon, authenticated;
 grant insert on table public.profiles to authenticated;
-grant update (display_name, preferences) on table public.profiles to authenticated;
+grant update (display_name, preferences, avatar_url) on table public.profiles to authenticated;
 
 -- Politici de securitate (RLS)
 drop policy if exists "Citire publica profiluri" on public.profiles;
@@ -252,5 +253,57 @@ $$;
 
 revoke all on function public.record_completed_match(text, smallint, smallint, uuid, text, boolean, jsonb) from public, anon;
 grant execute on function public.record_completed_match(text, smallint, smallint, uuid, text, boolean, jsonb) to authenticated;
+
+
+-- 6. Storage Bucket pentru Avatare de Profil (512 KB max, imagini publice, scriere strict pe folderul propriu user_id)
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'avatars',
+  'avatars',
+  true,
+  524288,
+  array['image/webp', 'image/jpeg', 'image/png', 'image/gif']
+)
+on conflict (id) do update
+set public = excluded.public,
+    file_size_limit = excluded.file_size_limit,
+    allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists "Citire publica avatare" on storage.objects;
+create policy "Citire publica avatare"
+  on storage.objects for select
+  to anon, authenticated
+  using (bucket_id = 'avatars');
+
+drop policy if exists "Incarcare avatar propriu" on storage.objects;
+create policy "Incarcare avatar propriu"
+  on storage.objects for insert
+  to authenticated
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists "Actualizare avatar propriu" on storage.objects;
+create policy "Actualizare avatar propriu"
+  on storage.objects for update
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  )
+  with check (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
+
+drop policy if exists "Stergere avatar propriu" on storage.objects;
+create policy "Stergere avatar propriu"
+  on storage.objects for delete
+  to authenticated
+  using (
+    bucket_id = 'avatars'
+    and (storage.foldername(name))[1] = (select auth.uid())::text
+  );
 
 notify pgrst, 'reload schema';

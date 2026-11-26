@@ -230,12 +230,20 @@ async function getProfileStats({ accessToken }) {
       .not('user_id', 'is', null)
       .order('created_at', { ascending: false })
       .limit(1000),
-    client.from('profiles').select('id, display_name'),
+    client.from('profiles').select('id, display_name, avatar_url'),
   ]);
 
   const latestNameById = {};
+  const avatarById = {};
   for (const prof of allProfiles || []) {
     if (prof.display_name) latestNameById[prof.id] = prof.display_name;
+    if (prof.avatar_url) avatarById[prof.id] = prof.avatar_url;
+  }
+
+  for (const m of recentMatches) {
+    for (const pl of m.players) {
+      pl.avatarUrl = pl.userId ? avatarById[pl.userId] || null : null;
+    }
   }
 
   // Agregăm Clasamentul General între conturi
@@ -247,6 +255,7 @@ async function getProfileStats({ accessToken }) {
       acc = {
         userId: row.user_id,
         displayName: latestNameById[row.user_id] || row.display_name,
+        avatarUrl: avatarById[row.user_id] || null,
         matches: 0,
         wins: 0,
         zeroWins: 0,

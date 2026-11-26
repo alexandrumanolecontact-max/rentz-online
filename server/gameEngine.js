@@ -19,6 +19,7 @@ class RentzGame {
     this.players = players.map((p, idx) => ({
       id: p.id,
       nickname: p.nickname,
+      avatarUrl: p.avatarUrl || null,
       seatIndex: idx,
     }));
     this.numPlayers = this.players.length;
@@ -432,6 +433,13 @@ class RentzGame {
 
   getPlayerById(playerId) {
     return this.players.find((p) => p.id === playerId) || null;
+  }
+
+  updatePlayerAvatar(playerId, avatarUrl) {
+    const p = this.getPlayerById(playerId);
+    if (p) {
+      p.avatarUrl = avatarUrl || null;
+    }
   }
 
   getPlayerIndex(playerId) {
@@ -852,6 +860,7 @@ class RentzGame {
     this.currentTrick.push({
       playerId,
       nickname: player.nickname,
+      avatarUrl: player.avatarUrl || null,
       card,
     });
 
@@ -1343,6 +1352,7 @@ class RentzGame {
         return {
           id: p.id,
           nickname: p.nickname,
+          avatarUrl: p.avatarUrl || null,
           score,
           isZeroWinner: isFinal && score === 0,
         };
@@ -1427,6 +1437,7 @@ class RentzGame {
         return {
           id: p.id,
           nickname: p.nickname,
+          avatarUrl: p.avatarUrl || null,
           seatIndex: p.seatIndex,
           connected: connectionMap[p.id] !== false,
           isBot: Boolean(meta.isBot),

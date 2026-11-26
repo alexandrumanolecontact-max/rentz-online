@@ -113,6 +113,7 @@ const resetConfirmPassword = document.getElementById('reset-confirm-password');
 const btnSubmitReset = document.getElementById('btn-submit-reset');
 
 // Referințe DOM Meniu, Lobby & Joc
+const headerUserAvatar = document.getElementById('header-user-avatar');
 const displayNickname = document.getElementById('display-nickname');
 const btnLogout = document.getElementById('btn-logout');
 const btnCreateRoom = document.getElementById('btn-create-room');
@@ -177,6 +178,16 @@ function escapeHtml(str) {
   return div.innerHTML;
 }
 
+function renderAvatarHtml(nickname, avatarUrl, size = 'xs') {
+  const initial = (nickname || '?').trim().charAt(0).toUpperCase() || '?';
+  if (avatarUrl && /^https?:\/\//i.test(avatarUrl)) {
+    return `<img src="${escapeHtml(
+      avatarUrl
+    )}" alt="" class="player-avatar player-avatar-${size}" />`;
+  }
+  return `<span class="player-avatar player-avatar-${size}">${escapeHtml(initial)}</span>`;
+}
+
 function showScreen(name) {
   Object.entries(screens).forEach(([key, el]) => {
     el.classList.toggle('active', key === name);
@@ -197,7 +208,11 @@ function switchAuthView(view) {
 }
 
 function syncMenuHeader() {
-  displayNickname.textContent = state.user?.displayName || 'Jucător';
+  const name = state.user?.displayName || 'Jucător';
+  displayNickname.textContent = name;
+  if (headerUserAvatar) {
+    headerUserAvatar.innerHTML = renderAvatarHtml(name, state.user?.avatarUrl, 'sm');
+  }
 }
 
 /* ==================== INIȚIALIZARE SUPABASE & SESIUNE ==================== */
@@ -703,10 +718,9 @@ function renderLobby(room) {
     if (p) {
       seat.className = `lobby-seat${p.ready ? ' ready' : ''}`;
       const isMe = p.id === myId;
-      const initial = p.nickname.charAt(0).toUpperCase();
       seat.innerHTML = `
         <div class="seat-user">
-          <div class="avatar-circle">${escapeHtml(initial)}</div>
+          ${renderAvatarHtml(p.nickname, p.avatarUrl, 'md')}
           <span class="seat-name">${escapeHtml(p.nickname)}${isMe ? ' (Tu)' : ''}</span>
           ${p.isHost ? '<span class="tag-badge">Host</span>' : ''}
         </div>
@@ -892,7 +906,10 @@ function renderGame(room) {
 
     seatEl.innerHTML = `
       <div class="seat-top-line">
-        <span>${escapeHtml(opp.nickname)}</span>
+        <span class="inline-user-cell">
+          ${renderAvatarHtml(opp.nickname, opp.avatarUrl, 'xs')}
+          <span>${escapeHtml(opp.nickname)}</span>
+        </span>
         <span class="seat-score ${scoreClass}">${opp.score}p</span>
       </div>
       <div class="seat-meta-line">
@@ -920,7 +937,10 @@ function renderGame(room) {
         : '';
     mySeatBar.className = `my-seat-bar${myTurn ? ' my-turn' : ''}`;
     mySeatBar.innerHTML = `
-      <strong>${escapeHtml(me.nickname)} (Tu)</strong>
+      <span class="inline-user-cell">
+        ${renderAvatarHtml(me.nickname, me.avatarUrl, 'xs')}
+        <strong>${escapeHtml(me.nickname)} (Tu)</strong>
+      </span>
       <span class="seat-score ${myScoreClass}">Scor: ${me.score}p</span>
       ${me.isAfk ? '<span class="mini-chip afk-chip">💤 Mod AFK</span>' : ''}
       ${g.chooserId === me.id ? '<span class="mini-chip">Alegătorul rundei</span>' : ''}
@@ -1187,8 +1207,12 @@ function renderTableCenter(g, me) {
         }
         slot.appendChild(createCardElement(entry.card));
         const by = document.createElement('div');
-        by.className = 'played-by';
-        by.textContent = entry.nickname;
+        by.className = 'played-by inline-user-cell';
+        by.innerHTML = `${renderAvatarHtml(
+          entry.nickname,
+          entry.avatarUrl,
+          'xxs'
+        )}<span>${escapeHtml(entry.nickname)}</span>`;
         slot.appendChild(by);
         row.appendChild(slot);
       }
@@ -1259,7 +1283,11 @@ function renderTableCenter(g, me) {
         const dColor = d > 0 ? 'suit-black' : d < 0 ? 'suit-red' : '';
         return `
           <tr>
-            <td>${escapeHtml(p.nickname)}</td>
+            <td><span class="inline-user-cell">${renderAvatarHtml(
+              p.nickname,
+              p.avatarUrl,
+              'xs'
+            )}<span>${escapeHtml(p.nickname)}</span></span></td>
             <td class="${dColor}">${formatSigned(d)}</td>
             <td><strong>${s.totalsAfter[p.id]}</strong></td>
           </tr>
@@ -1300,7 +1328,11 @@ function renderTableCenter(g, me) {
           : '';
         return `
           <tr>
-            <td>${medal} <strong>${escapeHtml(st.nickname)}</strong>${zeroBadge}</td>
+            <td><span class="inline-user-cell">${medal} ${renderAvatarHtml(
+          st.nickname,
+          st.avatarUrl,
+          'xs'
+        )}<strong>${escapeHtml(st.nickname)}</strong>${zeroBadge}</span></td>
             <td></td>
             <td><strong>${st.score} pct</strong></td>
           </tr>
@@ -1452,7 +1484,11 @@ function renderScoresModal(g) {
         .join(' ');
       return `
         <tr>
-          <td>${idx + 1}. <strong>${escapeHtml(s.nickname)}</strong></td>
+          <td><span class="inline-user-cell">${idx + 1}. ${renderAvatarHtml(
+        s.nickname,
+        p?.avatarUrl,
+        'xs'
+      )}<strong>${escapeHtml(s.nickname)}</strong></span></td>
           <td style="text-align:left">${remChips || '<em>Toate jucate</em>'}</td>
           <td><strong>${s.score}</strong></td>
         </tr>
@@ -1736,9 +1772,15 @@ function renderProfileStatsTab() {
             const pm = medals[pl.place - 1] || `${pl.place}.`;
             const z = pl.isZeroWinner ? ' 🎯' : '';
             const b = pl.wasBot ? ' 🤖' : '';
-            return `<span class="match-player-pill${pl.isMe ? ' me' : ''}">${pm} <strong>${escapeHtml(
-              pl.displayName
-            )}</strong>: ${formatSigned(pl.finalScore)}p${z}${b}</span>`;
+            return `<span class="match-player-pill inline-user-cell${
+              pl.isMe ? ' me' : ''
+            }">${pm} ${renderAvatarHtml(
+              pl.displayName,
+              pl.avatarUrl,
+              'xxs'
+            )}<strong>${escapeHtml(pl.displayName)}</strong>: ${formatSigned(
+              pl.finalScore
+            )}p${z}${b}</span>`;
           })
           .join('');
 
@@ -1774,9 +1816,13 @@ function renderProfileStatsTab() {
         const medal = medals[idx] || `${idx + 1}.`;
         return `
           <tr>
-            <td>${medal} <strong>${escapeHtml(item.displayName)}</strong>${
+            <td><span class="inline-user-cell">${medal} ${renderAvatarHtml(
+          item.displayName,
+          item.avatarUrl,
+          'xs'
+        )}<strong>${escapeHtml(item.displayName)}</strong>${
           item.isMe ? ' <span class="tag-badge">Tu</span>' : ''
-        }</td>
+        }</span></td>
             <td style="text-align:right"><strong>${item.wins}</strong> (${item.winRate}%) &nbsp;·&nbsp; ${
           item.matches
         } meciuri</td>
@@ -1862,6 +1908,13 @@ function renderAccountSettingsModal() {
   settingsAccountEmail.textContent = u.email || '-';
   settingsCurrentNickname.textContent = u.displayName || '-';
   inputSettingsNickname.value = '';
+
+  const avatarPrev = document.getElementById('settings-avatar-preview');
+  const btnRemoveAvatar = document.getElementById('btn-remove-avatar');
+  if (avatarPrev) {
+    avatarPrev.innerHTML = renderAvatarHtml(u.displayName, u.avatarUrl, 'lg');
+  }
+  btnRemoveAvatar?.classList.toggle('hidden', !u.avatarUrl);
 
   const nextIso = u.nextDisplayNameChangeAt;
   const isLocked = Boolean(nextIso && new Date(nextIso).getTime() > Date.now());
@@ -2057,6 +2110,157 @@ document.getElementById('form-settings-password')?.addEventListener('submit', as
     showToast('Eroare la actualizarea parolei.', true);
   } finally {
     saveBtn.disabled = false;
+  }
+});
+
+function cropAndCompressAvatar(file, targetSize = 192) {
+  return new Promise((resolve, reject) => {
+    if (!file || !file.type.startsWith('image/')) {
+      reject(new Error('Selectează un fișier imagine valid (JPG, PNG, WEBP).'));
+      return;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const canvas = document.createElement('canvas');
+      canvas.width = targetSize;
+      canvas.height = targetSize;
+      const ctx = canvas.getContext('2d');
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+
+      // Decupare pătrată pe centru (ca imaginea să nu fie deformată)
+      const side = Math.min(img.naturalWidth, img.naturalHeight);
+      const sx = Math.floor((img.naturalWidth - side) / 2);
+      const sy = Math.floor((img.naturalHeight - side) / 2);
+
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, targetSize, targetSize);
+
+      canvas.toBlob(
+        (webpBlob) => {
+          if (webpBlob && webpBlob.type === 'image/webp') {
+            resolve({ blob: webpBlob, ext: 'webp' });
+            return;
+          }
+          canvas.toBlob(
+            (jpegBlob) => {
+              if (!jpegBlob) {
+                reject(new Error('Nu s-a putut procesa imaginea.'));
+                return;
+              }
+              resolve({ blob: jpegBlob, ext: 'jpg' });
+            },
+            'image/jpeg',
+            0.86
+          );
+        },
+        'image/webp',
+        0.86
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Imaginea selectată nu a putut fi citită.'));
+    };
+
+    img.src = objectUrl;
+  });
+}
+
+const inputAvatarFile = document.getElementById('input-avatar-file');
+const btnChooseAvatar = document.getElementById('btn-choose-avatar');
+const btnRemoveAvatar = document.getElementById('btn-remove-avatar');
+
+btnChooseAvatar?.addEventListener('click', () => {
+  inputAvatarFile?.click();
+});
+
+inputAvatarFile?.addEventListener('change', async () => {
+  const file = inputAvatarFile.files?.[0];
+  inputAvatarFile.value = '';
+  if (!file || !supabaseClient || !state.user) return;
+
+  btnChooseAvatar.disabled = true;
+  const origText = btnChooseAvatar.textContent;
+  btnChooseAvatar.textContent = 'Se încarcă...';
+
+  try {
+    const { blob, ext } = await cropAndCompressAvatar(file, 192);
+    const storagePath = `${state.user.id}/avatar.${ext}`;
+
+    const { error: uploadErr } = await supabaseClient.storage
+      .from('avatars')
+      .upload(storagePath, blob, {
+        upsert: true,
+        contentType: blob.type,
+        cacheControl: '3600',
+      });
+
+    if (uploadErr) {
+      showToast(uploadErr.message || 'Nu s-a putut încărca imaginea.', true);
+      return;
+    }
+
+    const { data: pubData } = supabaseClient.storage.from('avatars').getPublicUrl(storagePath);
+    const freshAvatarUrl = `${pubData.publicUrl}?v=${Date.now()}`;
+
+    const resp = await fetch('/api/auth/avatar', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+      body: JSON.stringify({ avatarUrl: freshAvatarUrl }),
+    });
+    const saved = await resp.json();
+    if (!saved.ok) {
+      showToast(saved.error || 'Eroare la salvarea imaginii de profil.', true);
+      return;
+    }
+
+    state.user = saved.user;
+    syncMenuHeader();
+    renderAccountSettingsModal();
+    emitSessionInit();
+    showToast('Imaginea de profil a fost actualizată!', false);
+  } catch (err) {
+    showToast(err?.message || 'Eroare la încărcarea imaginii.', true);
+  } finally {
+    btnChooseAvatar.disabled = false;
+    btnChooseAvatar.textContent = origText;
+  }
+});
+
+btnRemoveAvatar?.addEventListener('click', async () => {
+  if (!state.accessToken) return;
+  btnRemoveAvatar.disabled = true;
+  try {
+    const resp = await fetch('/api/auth/avatar', {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+      body: JSON.stringify({ avatarUrl: null }),
+    });
+    const saved = await resp.json();
+    if (!saved.ok) {
+      showToast(saved.error || 'Nu s-a putut șterge imaginea.', true);
+      return;
+    }
+    state.user = saved.user;
+    syncMenuHeader();
+    renderAccountSettingsModal();
+    emitSessionInit();
+    showToast('Imaginea de profil a fost ștearsă.', false);
+  } catch {
+    showToast('Eroare la ștergerea imaginii.', true);
+  } finally {
+    btnRemoveAvatar.disabled = false;
   }
 });
 
