@@ -1756,6 +1756,11 @@ function renderAccountSettingsModal() {
     inputSettingsNickname.disabled = false;
     btnSaveSettingsNickname.disabled = false;
   }
+
+  const pwaSec = document.getElementById('settings-pwa-section');
+  if (pwaSec) {
+    pwaSec.classList.toggle('hidden', !deferredInstallPrompt || isStandaloneApp());
+  }
 }
 
 btnOpenAccountSettings.addEventListener('click', () => {
@@ -1800,6 +1805,64 @@ formChangeNickname.addEventListener('submit', async (e) => {
     showToast('Eroare de conexiune la salvarea nickname-ului.', true);
     renderAccountSettingsModal();
   }
+});
+
+/* ==================== PWA (INSTALARE APLICAȚIE PE TELEFON / ANDROID) ==================== */
+
+let deferredInstallPrompt = null;
+const pwaInstallBanner = document.getElementById('pwa-install-banner');
+const btnPwaInstall = document.getElementById('btn-pwa-install');
+const btnPwaDismiss = document.getElementById('btn-pwa-dismiss');
+const btnSettingsPwaInstall = document.getElementById('btn-settings-pwa-install');
+
+function isStandaloneApp() {
+  return (
+    window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true
+  );
+}
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  deferredInstallPrompt = e;
+  if (!isStandaloneApp() && sessionStorage.getItem('pwa_banner_dismissed') !== '1') {
+    pwaInstallBanner?.classList.remove('hidden');
+  }
+});
+
+async function triggerPwaInstall() {
+  if (!deferredInstallPrompt) return;
+  pwaInstallBanner?.classList.add('hidden');
+  deferredInstallPrompt.prompt();
+  const choice = await deferredInstallPrompt.userChoice;
+  if (choice?.outcome === 'accepted') {
+    deferredInstallPrompt = null;
+  }
+  document.getElementById('settings-pwa-section')?.classList.toggle(
+    'hidden',
+    !deferredInstallPrompt || isStandaloneApp()
+  );
+}
+
+btnPwaInstall?.addEventListener('click', triggerPwaInstall);
+btnSettingsPwaInstall?.addEventListener('click', triggerPwaInstall);
+
+btnPwaDismiss?.addEventListener('click', () => {
+  sessionStorage.setItem('pwa_banner_dismissed', '1');
+  pwaInstallBanner?.classList.add('hidden');
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredInstallPrompt = null;
+  pwaInstallBanner?.classList.add('hidden');
+  document.getElementById('settings-pwa-section')?.classList.add('hidden');
+  showToast('Aplicația Rentz a fost instalată pe telefon!', false);
 });
 
 initAuth();

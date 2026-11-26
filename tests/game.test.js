@@ -572,6 +572,10 @@ async function runTests() {
     '/css/styles.css',
     '/js/app.js',
     '/js/cards.js',
+    '/manifest.webmanifest',
+    '/sw.js',
+    '/icons/icon-192.png',
+    '/icons/icon-512.png',
     '/socket.io/socket.io.js',
     '/vendor/supabase/supabase.js',
   ]) {

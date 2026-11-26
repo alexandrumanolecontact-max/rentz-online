@@ -2,8 +2,16 @@
 <html lang="ro">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#091712" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Rentz" />
   <title>Rentz Online — Joc de cărți multiplayer</title>
+  <link rel="manifest" href="/manifest.webmanifest" />
+  <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png" />
+  <link rel="apple-touch-icon" href="/icons/icon-192.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
@@ -14,6 +22,25 @@
 </head>
 <body>
   <div id="toast-container" aria-live="polite"></div>
+
+  <!-- Pop-up sus pentru instalarea aplicației pe telefon (Android PWA) -->
+  <div id="pwa-install-banner" class="pwa-install-banner hidden">
+    <div class="pwa-banner-info">
+      <img src="/icons/icon-192.png" alt="Rentz" class="pwa-banner-icon" />
+      <div class="pwa-banner-text">
+        <strong>Instalează aplicația Rentz</strong>
+        <span>Joacă pe tot ecranul, fără bara browserului!</span>
+      </div>
+    </div>
+    <div class="pwa-banner-actions">
+      <button type="button" id="btn-pwa-install" class="btn btn-primary btn-sm">
+        Instalează
+      </button>
+      <button type="button" id="btn-pwa-dismiss" class="btn-close" aria-label="Închide">
+        ✕
+      </button>
+    </div>
+  </div>
 
   <!-- ECRAN 1: Autentificare / Înregistrare / Recuperare Parolă -->
   <main id="screen-auth" class="screen active">
@@ -460,6 +487,16 @@
               Salvează Noul Nickname
             </button>
           </form>
+        </div>
+
+        <div id="settings-pwa-section" class="settings-section hidden">
+          <h4 class="settings-section-title">📱 Aplicație pe Telefon</h4>
+          <p class="settings-hint">
+            Instalează Rentz pe ecranul telefonului pentru a juca fără bara de adrese și butoanele browserului.
+          </p>
+          <button type="button" id="btn-settings-pwa-install" class="btn btn-secondary">
+            📱 Instalează Aplicația
+          </button>
         </div>
       </div>
     </div>

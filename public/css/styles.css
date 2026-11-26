@@ -48,7 +48,67 @@ body {
 .screen {
   display: none;
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
+}
+
+/* Pop-up instalare PWA sus */
+.pwa-install-banner {
+  position: fixed;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(520px, 94vw);
+  z-index: 1900;
+  background: rgba(12, 31, 24, 0.97);
+  border: 1px solid var(--border-gold);
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  animation: fadeSlideIn 0.22s ease-out;
+}
+
+.pwa-banner-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.pwa-banner-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 9px;
+  flex-shrink: 0;
+  border: 1px solid var(--border-gold);
+}
+
+.pwa-banner-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.pwa-banner-text strong {
+  font-size: 0.9rem;
+  color: var(--gold-bright);
+}
+
+.pwa-banner-text span {
+  font-size: 0.77rem;
+  color: var(--text-muted);
+}
+
+.pwa-banner-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .screen.active {
@@ -643,6 +703,7 @@ body {
 
 .game-layout {
   height: 100vh;
+  height: 100dvh;
   display: grid;
   grid-template-rows: auto 1fr auto;
   max-width: 1440px;
@@ -1404,6 +1465,37 @@ body {
   border: 2px solid var(--amber);
   box-shadow: 0 0 0 2px rgba(242, 169, 59, 0.35), 0 8px 18px rgba(0, 0, 0, 0.4);
   transform: translateY(-5px);
+}
+
+@media (max-width: 600px) {
+  .playing-card {
+    width: 56px;
+    height: 82px;
+    padding: 4px 5px;
+    border-radius: 8px;
+  }
+
+  .card-rank {
+    font-size: 0.85rem;
+  }
+
+  .card-suit-sm {
+    font-size: 0.68rem;
+  }
+
+  .card-center-pip {
+    font-size: 1.4rem;
+  }
+
+  .my-hand {
+    gap: 5px;
+    min-height: 92px;
+  }
+
+  .opponent-seat {
+    min-width: 112px;
+    padding: 6px 9px;
+  }
 }
 
 /* Rezumat Rundă & Final Joc */
