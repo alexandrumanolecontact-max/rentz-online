@@ -183,6 +183,8 @@ const TIMERS = {
   LOBBY_DISCONNECT_GRACE_MS: 4500,
   TURN_VISIBLE_MS: 30000,
   TURN_GRACE_MS: 3000,
+  AFK_THIRD_STRIKE_MS: 10000, // A 3-a oară la rând: numără de la 30s la 20s (10 secunde), apoi intră în AFK
+  BOT_ACTION_DELAY_MS: 400,   // Mutare rapidă a botului (suficient cât să se vadă cartea pusă pe masă)
 };
 
 module.exports = {

@@ -14,6 +14,7 @@ const state = {
   inPasswordRecovery: false,
   turnDeadlinePerf: null,
   turnTotalMs: 30000,
+  turnIsAfkWarning: false,
 };
 
 let turnTickerInterval = null;
@@ -94,6 +95,8 @@ const opponentsRing = document.getElementById('opponents-ring');
 const tableCenter = document.getElementById('table-center');
 const lastTrickBox = document.getElementById('last-trick-box');
 const mySeatBar = document.getElementById('my-seat-bar');
+const afkResumeBanner = document.getElementById('afk-resume-banner');
+const btnResumeAfk = document.getElementById('btn-resume-afk');
 const rentzPassRow = document.getElementById('rentz-pass-row');
 const btnPassRentz = document.getElementById('btn-pass-rentz');
 const myHandContainer = document.getElementById('my-hand');
@@ -297,6 +300,7 @@ function syncTurnTimerFromGame(g) {
   if (typeof g.turnRemainingMs === 'number' && g.turnTotalMs) {
     state.turnDeadlinePerf = performance.now() + g.turnRemainingMs;
     state.turnTotalMs = g.turnTotalMs;
+    state.turnIsAfkWarning = Boolean(g.turnIsAfkWarning);
     if (!turnTickerInterval) {
       turnTickerInterval = setInterval(updateLiveTurnTimerDOM, 200);
     }
@@ -309,11 +313,16 @@ function getTurnTimerSnapshot() {
   if (state.turnDeadlinePerf === null) return null;
   const remMs = Math.max(0, state.turnDeadlinePerf - performance.now());
   const secs = Math.ceil(remMs / 1000);
-  // Când remMs e aproape 0, afișăm 0s pe durata celor 3 secunde de grație
   const displaySecs = remMs <= 50 ? 0 : secs;
   const pct = Math.max(0, Math.min(100, (remMs / (state.turnTotalMs || 30000)) * 100));
-  const tone = displaySecs <= 5 ? 'urgent' : displaySecs <= 10 ? 'warn' : '';
-  return { displaySecs, pct, tone };
+  let tone = '';
+  if (state.turnIsAfkWarning) {
+    tone = displaySecs <= 23 ? 'urgent' : 'warn';
+  } else {
+    tone = displaySecs <= 5 ? 'urgent' : displaySecs <= 10 ? 'warn' : '';
+  }
+  const label = state.turnIsAfkWarning ? `⏱ ${displaySecs}s (AFK la 20s)` : `⏱ ${displaySecs}s`;
+  return { displaySecs, pct, tone, label };
 }
 
 function updateLiveTurnTimerDOM() {
@@ -322,7 +331,7 @@ function updateLiveTurnTimerDOM() {
 
   const pill = document.getElementById('active-turn-timer-pill');
   if (pill) {
-    pill.textContent = `⏱ ${snap.displaySecs}s`;
+    pill.textContent = snap.label;
     pill.className = `turn-timer-pill${snap.tone ? ` ${snap.tone}` : ''}`;
   }
 
@@ -764,7 +773,7 @@ function renderGame(room) {
       isTurn && timerSnap
         ? `<span id="active-turn-timer-pill" class="turn-timer-pill${
             timerSnap.tone ? ` ${timerSnap.tone}` : ''
-          }">⏱ ${timerSnap.displaySecs}s</span>`
+          }">${escapeHtml(timerSnap.label)}</span>`
         : '';
     const timerBarHtml =
       isTurn && timerSnap
@@ -772,14 +781,22 @@ function renderGame(room) {
             timerSnap.tone ? ` ${timerSnap.tone}` : ''
           }" style="width:${timerSnap.pct}%"></div></div>`
         : '';
+    const seatStateChip = opp.isBot
+      ? '<span class="mini-chip bot-chip">🤖 Bot</span>'
+      : opp.isAfk
+      ? '<span class="mini-chip afk-chip">💤 AFK (Bot)</span>'
+      : !opp.connected
+      ? '<span class="mini-chip danger-chip">Deconectat</span>'
+      : '';
 
     seatEl.innerHTML = `
       <div class="seat-top-line">
-        <span>${escapeHtml(opp.nickname)}${!opp.connected ? ' (offline)' : ''}</span>
+        <span>${escapeHtml(opp.nickname)}</span>
         <span class="seat-score ${scoreClass}">${opp.score}p</span>
       </div>
       <div class="seat-meta-line">
         <span class="mini-chip">🂠 ${opp.cardCount}</span>
+        ${seatStateChip}
         ${isChooser ? '<span class="mini-chip">Alege</span>' : ''}
         ${isTurn ? '<span class="mini-chip turn-chip">La rând</span>' : ''}
         ${timerBadgeHtml}
@@ -791,18 +808,20 @@ function renderGame(room) {
   }
 
   if (me) {
-    const myTurn = g.currentTurnPlayerId === me.id;
+    afkResumeBanner.classList.toggle('hidden', !me.isAfk);
+    const myTurn = g.currentTurnPlayerId === me.id && !me.isAfk;
     const myScoreClass = me.score > 0 ? 'pos' : me.score < 0 ? 'neg' : '';
     const myTimerHtml =
       myTurn && timerSnap
         ? `<span id="active-turn-timer-pill" class="turn-timer-pill${
             timerSnap.tone ? ` ${timerSnap.tone}` : ''
-          }">⏱ ${timerSnap.displaySecs}s</span>`
+          }">${escapeHtml(timerSnap.label)}</span>`
         : '';
     mySeatBar.className = `my-seat-bar${myTurn ? ' my-turn' : ''}`;
     mySeatBar.innerHTML = `
       <strong>${escapeHtml(me.nickname)} (Tu)</strong>
       <span class="seat-score ${myScoreClass}">Scor: ${me.score}p</span>
+      ${me.isAfk ? '<span class="mini-chip afk-chip">💤 Mod AFK</span>' : ''}
       ${g.chooserId === me.id ? '<span class="mini-chip">Alegătorul rundei</span>' : ''}
       ${myTurn ? '<span class="mini-chip turn-chip">Este rândul tău!</span>' : ''}
       ${myTimerHtml}
@@ -830,8 +849,8 @@ function renderGame(room) {
   }
 
   renderTableCenter(g, me);
-  rentzPassRow.classList.toggle('hidden', !g.canPassRentz);
-  renderMyHand(g);
+  rentzPassRow.classList.toggle('hidden', Boolean(!g.canPassRentz || me?.isAfk));
+  renderMyHand(g, me);
 }
 
 function scaleSubgameDesc(shortDesc, multiplier) {
@@ -1161,7 +1180,7 @@ function renderTableCenter(g, me) {
   }
 }
 
-function renderMyHand(g) {
+function renderMyHand(g, me) {
   myHandContainer.innerHTML = '';
 
   // Dacă suntem înainte de dezvăluirea cărților (alegere Pe Văzute / Pe Nevăzute), afișăm cărțile cu fața în jos
@@ -1172,13 +1191,14 @@ function renderMyHand(g) {
     return;
   }
 
+  const isAfk = Boolean(me?.isAfk);
   const isActionPhase = g.phase === 'playing_tricks' || g.phase === 'playing_rentz';
-  const isMyTurn = g.currentTurnPlayerId === state.user?.id;
+  const isMyTurn = !isAfk && g.currentTurnPlayerId === state.user?.id;
   const playableSet = new Set(g.playableCardIds || []);
 
   for (const card of g.myHand) {
     const playable = isActionPhase && isMyTurn && playableSet.has(card.id);
-    const disabled = isActionPhase && isMyTurn && !playableSet.has(card.id);
+    const disabled = isAfk || (isActionPhase && isMyTurn && !playableSet.has(card.id));
 
     const cardEl = createCardElement(card, {
       playable,
@@ -1194,6 +1214,16 @@ function renderMyHand(g) {
     myHandContainer.appendChild(cardEl);
   }
 }
+
+btnResumeAfk.addEventListener('click', () => {
+  socket.emit('game:resume_from_afk', {}, (res) => {
+    if (res && !res.ok) {
+      showToast(res.error || 'Nu s-a putut relua jocul.', true);
+    } else {
+      showToast('Ai revenit în joc!', false);
+    }
+  });
+});
 
 btnPassRentz.addEventListener('click', () => {
   socket.emit('game:pass_rentz', {}, (res) => {
@@ -1272,11 +1302,16 @@ document.getElementById('btn-open-rules').addEventListener('click', () => {
 });
 
 document.getElementById('btn-leave-game').addEventListener('click', () => {
-  if (!window.confirm('Sigur vrei să părăsești masa? Jocul curent se va opri pentru toți jucătorii.')) {
+  if (
+    !window.confirm(
+      'Sigur vrei să părăsești meciul? Jocul va continua pentru ceilalți jucători, iar locul și scorul tău vor fi preluate de un Bot.'
+    )
+  ) {
     return;
   }
   socket.emit('room:leave', {}, () => {
     state.room = null;
+    stopTurnTicker();
     syncMenuHeader();
     showScreen('menu');
   });

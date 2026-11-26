@@ -141,6 +141,7 @@ class RoomManager {
     if (!room) {
       return { ok: false };
     }
+    this.clearDisconnectTimer(`room_${room.code}`);
     const player = room.players.find((p) => p.id === playerId);
     if (!player) {
       this.playerRoomMap.delete(playerId);
@@ -219,9 +220,9 @@ class RoomManager {
     room.game.destroy();
     room.game = null;
     room.status = 'lobby';
-    // Eliminăm jucătorii deconectați definitiv și resetăm starea Ready
+    // Eliminăm boții (jucătorii ieșiți voluntar) și jucătorii deconectați definitiv, și resetăm starea Ready
     room.players = room.players.filter((p) => {
-      if (!p.connected) {
+      if (p.isBot || !p.connected) {
         this.playerRoomMap.delete(p.id);
         return false;
       }
@@ -266,27 +267,43 @@ class RoomManager {
       return { code, room };
     }
 
-    // Dacă părăsește explicit în timpul jocului, închidem masa și readucem ceilalți jucători în lobby
-    if (room.game) {
-      room.game.destroy();
-      room.game = null;
+    // Dacă părăsește voluntar în timpul jocului, locul și tot progresul lui sunt preluate de un Bot!
+    const leavingPlayer = room.players.find((p) => p.id === playerId);
+    if (leavingPlayer) {
+      leavingPlayer.isBot = true;
+      leavingPlayer.connected = false;
+      leavingPlayer.socketId = null;
     }
-    room.status = 'lobby';
-    room.players = room.players.filter((p) => p.id !== playerId && p.connected);
-    for (const p of room.players) {
-      p.ready = false;
-    }
-    if (room.players.length === 0) {
+
+    // Dacă toți jucătorii umani au ieșit definitiv, închidem și curățăm camera
+    const anyHumanRemaining = room.players.some((p) => !p.isBot);
+    if (!anyHumanRemaining) {
+      if (room.game) {
+        room.game.destroy();
+        room.game = null;
+      }
+      for (const p of room.players) {
+        this.playerRoomMap.delete(p.id);
+      }
       this.rooms.delete(code);
       return { code, deleted: true };
     }
-    if (!room.players.some((p) => p.id === room.hostId)) {
-      room.hostId = room.players[0].id;
+
+    if (room.hostId === playerId) {
+      const nextHost = room.players.find((p) => !p.isBot);
+      if (nextHost) room.hostId = nextHost.id;
     }
+
+    if (room.game) {
+      room.game.convertPlayerToBot(playerId);
+    }
+
     return {
       code,
       room,
-      abortedNotice: 'Un jucător a părăsit masa. Camera a revenit în lobby.',
+      abortedNotice: `${
+        leavingPlayer?.nickname || 'Un jucător'
+      } a părăsit meciul — Botul a preluat locul și continuă jocul.`,
     };
   }
 
@@ -313,20 +330,20 @@ class RoomManager {
         }, TIMERS.LOBBY_DISCONNECT_GRACE_MS);
         this.disconnectTimers.set(player.id, timer);
       } else {
-        // În timpul jocului, păstrăm locul jucătorului ca să poată da refresh fără să piardă mâna;
-        // doar dacă toți jucătorii s-au deconectat curățăm camera după 5 minute.
-        const everyoneOffline = room.players.every((p) => !p.connected);
+        // În timpul jocului, păstrăm locul jucătorului ca să se poată reconecta automat când intră în cont;
+        // doar dacă toți jucătorii umani s-au deconectat timp de 15 minute curățăm camera.
+        const everyoneOffline = room.players.every((p) => p.isBot || !p.connected);
         if (everyoneOffline) {
           this.clearDisconnectTimer(`room_${code}`);
           const roomTimer = setTimeout(() => {
             this.disconnectTimers.delete(`room_${code}`);
             const r = this.rooms.get(code);
-            if (r && r.players.every((p) => !p.connected)) {
+            if (r && r.players.every((p) => p.isBot || !p.connected)) {
               if (r.game) r.game.destroy();
               for (const p of r.players) this.playerRoomMap.delete(p.id);
               this.rooms.delete(code);
             }
-          }, 5 * 60 * 1000);
+          }, 15 * 60 * 1000);
           this.disconnectTimers.set(`room_${code}`, roomTimer);
         }
       }

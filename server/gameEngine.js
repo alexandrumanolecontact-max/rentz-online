@@ -31,9 +31,15 @@ class RentzGame {
 
     this.scores = {};
     this.availableSubgames = {};
+    this.seatMeta = {};
     for (const p of this.players) {
       this.scores[p.id] = 0;
       this.availableSubgames[p.id] = SUBGAMES.map((s) => s.id);
+      this.seatMeta[p.id] = {
+        isBot: Boolean(p.isBot),
+        isAfk: false,
+        consecutiveTimeouts: 0,
+      };
     }
 
     this.roundHistory = [];
@@ -42,6 +48,8 @@ class RentzGame {
     this.pendingTimer = null;
     this.turnTimer = null;
     this.turnStartedAt = null;
+    this.turnIsAfkWarning = false;
+    this.botTimer = null;
 
     // Stare curentă de rundă
     this.phase = 'deciding_blind';
@@ -74,6 +82,7 @@ class RentzGame {
   destroy() {
     this.clearPendingTimer();
     this.clearTurnTimer();
+    this.clearBotTimer();
   }
 
   clearPendingTimer() {
@@ -89,10 +98,142 @@ class RentzGame {
       this.turnTimer = null;
     }
     this.turnStartedAt = null;
+    this.turnIsAfkWarning = false;
+  }
+
+  clearBotTimer() {
+    if (this.botTimer) {
+      clearTimeout(this.botTimer);
+      this.botTimer = null;
+    }
+  }
+
+  isSeatAutomated(playerId) {
+    const meta = this.seatMeta[playerId];
+    return Boolean(meta && (meta.isBot || meta.isAfk));
+  }
+
+  hasAnyActiveHuman() {
+    return this.players.some((p) => !this.isSeatAutomated(p.id));
+  }
+
+  recordManualAction(playerId) {
+    const meta = this.seatMeta[playerId];
+    if (meta && !meta.isBot) {
+      meta.consecutiveTimeouts = 0;
+    }
+  }
+
+  convertPlayerToBot(playerId) {
+    const meta = this.seatMeta[playerId];
+    if (!meta) return;
+    meta.isBot = true;
+    meta.isAfk = false;
+    meta.consecutiveTimeouts = 0;
+
+    if (this.phase === 'round_summary') {
+      this.summaryContinueSet.add(playerId);
+      if (this.summaryContinueSet.size >= this.numPlayers) {
+        this.startNextRound();
+        return;
+      }
+    }
+
+    if (this.currentTurnPlayerId === playerId) {
+      this.clearTurnTimer();
+    }
+    this.scheduleBotActionIfNeeded();
+  }
+
+  resumeFromAfk(playerId) {
+    const meta = this.seatMeta[playerId];
+    if (!meta || meta.isBot) {
+      return { ok: false, error: 'Acest loc nu poate fi reluat.' };
+    }
+    if (!meta.isAfk) {
+      return { ok: true };
+    }
+
+    meta.isAfk = false;
+    meta.consecutiveTimeouts = 0;
+
+    const player = this.getPlayerById(playerId);
+    // Dacă urma chiar mutarea acestui jucător și botul încă nu mutase, îi redăm controlul cu timer normal
+    if (
+      (this.phase === 'playing_tricks' || this.phase === 'playing_rentz') &&
+      this.currentTurnPlayerId === playerId
+    ) {
+      this.clearBotTimer();
+      this.statusBanner = `${player.nickname} a revenit în joc — Rândul lui ${player.nickname}!`;
+      this.armTurnTimer();
+    } else if (
+      (this.phase === 'deciding_blind' || this.phase === 'choosing_subgame') &&
+      this.chooserId === playerId
+    ) {
+      this.clearBotTimer();
+    } else {
+      // Dacă masa era în pauză fiindcă toți erau AFK, repornim fluxul pentru cine e la rând
+      this.scheduleBotActionIfNeeded();
+    }
+
+    return { ok: true };
+  }
+
+  scheduleBotActionIfNeeded() {
+    this.clearBotTimer();
+    if (!this.hasAnyActiveHuman()) {
+      return;
+    }
+
+    if (this.phase === 'deciding_blind' && this.isSeatAutomated(this.chooserId)) {
+      this.botTimer = setTimeout(() => {
+        this.botTimer = null;
+        if (this.phase === 'deciding_blind' && this.isSeatAutomated(this.chooserId)) {
+          this.chooseBlindMode(this.chooserId, false, { automated: true });
+          this.onStateChange();
+        }
+      }, TIMERS.BOT_ACTION_DELAY_MS);
+      return;
+    }
+
+    if (this.phase === 'choosing_subgame' && this.isSeatAutomated(this.chooserId)) {
+      this.botTimer = setTimeout(() => {
+        this.botTimer = null;
+        if (this.phase === 'choosing_subgame' && this.isSeatAutomated(this.chooserId)) {
+          const avail = this.availableSubgames[this.chooserId] || [];
+          if (avail.length > 0) {
+            const randomSub = avail[crypto.randomInt(0, avail.length)];
+            this.chooseSubgame(this.chooserId, randomSub, { automated: true });
+            this.onStateChange();
+          }
+        }
+      }, TIMERS.BOT_ACTION_DELAY_MS);
+      return;
+    }
+
+    if (
+      (this.phase === 'playing_tricks' || this.phase === 'playing_rentz') &&
+      this.currentTurnPlayerId &&
+      this.isSeatAutomated(this.currentTurnPlayerId)
+    ) {
+      this.clearTurnTimer();
+      const targetId = this.currentTurnPlayerId;
+      this.botTimer = setTimeout(() => {
+        this.botTimer = null;
+        if (this.currentTurnPlayerId === targetId && this.isSeatAutomated(targetId)) {
+          const meta = this.seatMeta[targetId];
+          const p = this.getPlayerById(targetId);
+          const tag = meta?.isBot ? `${p.nickname} (Bot)` : `${p.nickname} (AFK Bot)`;
+          this.executeRandomMoveForSeat(targetId, `🤖 ${tag} a jucat o carte`);
+          this.onStateChange();
+        }
+      }, TIMERS.BOT_ACTION_DELAY_MS);
+    }
   }
 
   armTurnTimer() {
     this.clearTurnTimer();
+    this.clearBotTimer();
     if (
       (this.phase !== 'playing_tricks' && this.phase !== 'playing_rentz') ||
       !this.currentTurnPlayerId
@@ -100,12 +241,52 @@ class RentzGame {
       return;
     }
 
+    if (this.isSeatAutomated(this.currentTurnPlayerId)) {
+      this.scheduleBotActionIfNeeded();
+      return;
+    }
+
+    const meta = this.seatMeta[this.currentTurnPlayerId] || { consecutiveTimeouts: 0 };
+    const isThirdStrike = meta.consecutiveTimeouts >= 2;
+
     this.turnStartedAt = Date.now();
-    const totalTimeoutMs = TIMERS.TURN_VISIBLE_MS + TIMERS.TURN_GRACE_MS;
+    this.turnIsAfkWarning = isThirdStrike;
+    const totalTimeoutMs = isThirdStrike
+      ? TIMERS.AFK_THIRD_STRIKE_MS
+      : TIMERS.TURN_VISIBLE_MS + TIMERS.TURN_GRACE_MS;
+
     this.turnTimer = setTimeout(() => {
       this.turnTimer = null;
       this.handleTurnTimeout();
     }, totalTimeoutMs);
+  }
+
+  executeRandomMoveForSeat(playerId, bannerPrefix = null) {
+    if (this.phase === 'playing_tricks') {
+      const validIds = this.getPlayableTrickCards(playerId);
+      if (validIds.length === 0) return false;
+      const chosenCardId = validIds[crypto.randomInt(0, validIds.length)];
+      const prevTrickLen = this.currentTrick.length;
+      const res = this.playTrickCard(playerId, chosenCardId, { automated: true });
+      if (res.ok && bannerPrefix && prevTrickLen + 1 < this.numPlayers && this.phase === 'playing_tricks') {
+        const nextPlayer = this.getPlayerById(this.currentTurnPlayerId);
+        this.statusBanner = `${bannerPrefix} — Rândul lui ${nextPlayer.nickname}`;
+      }
+      return res.ok;
+    }
+
+    if (this.phase === 'playing_rentz') {
+      const validIds = this.getPlayableRentzCards(playerId);
+      if (validIds.length > 0) {
+        const chosenCardId = validIds[crypto.randomInt(0, validIds.length)];
+        const res = this.playRentzCard(playerId, chosenCardId, { automated: true });
+        return res.ok;
+      }
+      const res = this.passRentzTurn(playerId, { automated: true });
+      return res.ok;
+    }
+
+    return false;
   }
 
   handleTurnTimeout() {
@@ -118,37 +299,29 @@ class RentzGame {
 
     const playerId = this.currentTurnPlayerId;
     const player = this.getPlayerById(playerId);
+    const meta = this.seatMeta[playerId];
+    if (!meta) return;
 
-    if (this.phase === 'playing_tricks') {
-      const validIds = this.getPlayableTrickCards(playerId);
-      if (validIds.length === 0) return;
-      const chosenCardId = validIds[crypto.randomInt(0, validIds.length)];
-      const prevTrickLen = this.currentTrick.length;
-      const res = this.playTrickCard(playerId, chosenCardId);
-      if (res.ok) {
-        if (prevTrickLen + 1 < this.numPlayers && this.phase === 'playing_tricks') {
-          const nextPlayer = this.getPlayerById(this.currentTurnPlayerId);
-          this.statusBanner = `⏱️ Timp expirat pentru ${player.nickname} (carte aleasă automat) — Rândul lui ${nextPlayer.nickname}`;
-        }
+    meta.consecutiveTimeouts += 1;
+
+    if (meta.consecutiveTimeouts >= 3) {
+      meta.isAfk = true;
+      const moved = this.executeRandomMoveForSeat(
+        playerId,
+        `💤 ${player.nickname} a intrat în AFK — Botul a preluat locul`
+      );
+      if (moved) {
         this.onStateChange();
       }
       return;
     }
 
-    if (this.phase === 'playing_rentz') {
-      const validIds = this.getPlayableRentzCards(playerId);
-      if (validIds.length > 0) {
-        const chosenCardId = validIds[crypto.randomInt(0, validIds.length)];
-        const res = this.playRentzCard(playerId, chosenCardId);
-        if (res.ok) {
-          this.onStateChange();
-        }
-      } else {
-        const res = this.passRentzTurn(playerId);
-        if (res.ok) {
-          this.onStateChange();
-        }
-      }
+    const moved = this.executeRandomMoveForSeat(
+      playerId,
+      `⏱️ Timp expirat (${meta.consecutiveTimeouts}/2) — carte aleasă automat pentru ${player.nickname}`
+    );
+    if (moved) {
+      this.onStateChange();
     }
   }
 
@@ -169,6 +342,7 @@ class RentzGame {
   startNextRound() {
     this.clearPendingTimer();
     this.clearTurnTimer();
+    this.clearBotTimer();
 
     if (this.roundNumber >= this.totalRounds) {
       this.phase = 'game_over';
@@ -214,14 +388,21 @@ class RentzGame {
 
     this.phase = 'deciding_blind';
     this.statusBanner = `${chooser.nickname} alege modul rundei: Pe Văzute (×1) sau Pe Nevăzute (×2)...`;
+    this.scheduleBotActionIfNeeded();
   }
 
-  chooseBlindMode(playerId, blind) {
+  chooseBlindMode(playerId, blind, { automated = false } = {}) {
     if (this.phase !== 'deciding_blind') {
       return { ok: false, error: 'Modul rundei a fost deja ales.' };
     }
     if (playerId !== this.chooserId) {
       return { ok: false, error: 'Nu este rândul tău să alegi modul rundei.' };
+    }
+    if (!automated && this.seatMeta[playerId]?.isAfk) {
+      return { ok: false, error: 'Apasă mai întâi pe „Reia Jocul” pentru a ieși din AFK.' };
+    }
+    if (!automated) {
+      this.recordManualAction(playerId);
     }
 
     const chooser = this.getPlayerById(playerId);
@@ -236,15 +417,19 @@ class RentzGame {
       this.statusBanner = `${chooser.nickname} joacă Pe Văzute (×1) — își privește cărțile și alege sub-jocul...`;
     }
 
+    this.scheduleBotActionIfNeeded();
     return { ok: true };
   }
 
-  chooseSubgame(playerId, subgameId) {
+  chooseSubgame(playerId, subgameId, { automated = false } = {}) {
     if (this.phase !== 'choosing_subgame') {
       return { ok: false, error: 'Nu este momentul alegerii sub-jocului.' };
     }
     if (playerId !== this.chooserId) {
       return { ok: false, error: 'Nu este rândul tău să alegi sub-jocul.' };
+    }
+    if (!automated && this.seatMeta[playerId]?.isAfk) {
+      return { ok: false, error: 'Apasă mai întâi pe „Reia Jocul” pentru a ieși din AFK.' };
     }
 
     const available = this.availableSubgames[playerId] || [];
@@ -255,6 +440,10 @@ class RentzGame {
     const subgame = SUBGAMES.find((s) => s.id === subgameId);
     if (!subgame) {
       return { ok: false, error: 'Sub-joc inexistent.' };
+    }
+
+    if (!automated) {
+      this.recordManualAction(playerId);
     }
 
     this.availableSubgames[playerId] = available.filter((id) => id !== subgameId);
@@ -333,9 +522,12 @@ class RentzGame {
     return { ok: false, error: 'Nu se pot juca cărți în acest moment.' };
   }
 
-  playTrickCard(playerId, cardId) {
+  playTrickCard(playerId, cardId, { automated = false } = {}) {
     if (this.currentTurnPlayerId !== playerId) {
       return { ok: false, error: 'Nu este rândul tău!' };
+    }
+    if (!automated && this.seatMeta[playerId]?.isAfk) {
+      return { ok: false, error: 'Ești marcat AFK. Apasă „Reia Jocul” pentru a continua!' };
     }
 
     const playableIds = this.getPlayableTrickCards(playerId);
@@ -347,6 +539,10 @@ class RentzGame {
     const cardIdx = hand.findIndex((c) => c.id === cardId);
     if (cardIdx === -1) {
       return { ok: false, error: 'Cartea nu se află în mâna ta.' };
+    }
+
+    if (!automated) {
+      this.recordManualAction(playerId);
     }
 
     const [card] = hand.splice(cardIdx, 1);
@@ -575,14 +771,21 @@ class RentzGame {
     return null;
   }
 
-  playRentzCard(playerId, cardId) {
+  playRentzCard(playerId, cardId, { automated = false } = {}) {
     if (this.currentTurnPlayerId !== playerId) {
       return { ok: false, error: 'Nu este rândul tău!' };
+    }
+    if (!automated && this.seatMeta[playerId]?.isAfk) {
+      return { ok: false, error: 'Ești marcat AFK. Apasă „Reia Jocul” pentru a continua!' };
     }
 
     const playableIds = this.getPlayableRentzCards(playerId);
     if (!playableIds.includes(cardId)) {
       return { ok: false, error: 'Această carte nu poate fi depusă încă pe masă.' };
+    }
+
+    if (!automated) {
+      this.recordManualAction(playerId);
     }
 
     const hand = this.hands[playerId];
@@ -649,16 +852,23 @@ class RentzGame {
     return { ok: true };
   }
 
-  passRentzTurn(playerId) {
+  passRentzTurn(playerId, { automated = false } = {}) {
     if (this.phase !== 'playing_rentz') {
       return { ok: false, error: 'Pasul este disponibil doar la sub-jocul Rentz.' };
     }
     if (this.currentTurnPlayerId !== playerId) {
       return { ok: false, error: 'Nu este rândul tău!' };
     }
+    if (!automated && this.seatMeta[playerId]?.isAfk) {
+      return { ok: false, error: 'Ești marcat AFK. Apasă „Reia Jocul” pentru a continua!' };
+    }
     const playableIds = this.getPlayableRentzCards(playerId);
     if (playableIds.length > 0) {
       return { ok: false, error: 'Nu poți spune Pas când ai cel puțin o carte validă de pus!' };
+    }
+
+    if (!automated) {
+      this.recordManualAction(playerId);
     }
 
     this.clearTurnTimer();
@@ -710,6 +920,12 @@ class RentzGame {
     this.roundHistory.push(summary);
     this.lastRoundSummary = summary;
     this.summaryContinueSet.clear();
+    // Jucătorii preluați de Bot / AFK bifează automat Continuă la rezumat
+    for (const p of this.players) {
+      if (this.isSeatAutomated(p.id)) {
+        this.summaryContinueSet.add(p.id);
+      }
+    }
 
     if (this.roundNumber >= this.totalRounds) {
       this.phase = 'game_over';
@@ -797,6 +1013,7 @@ class RentzGame {
       currentTurnPlayerId: this.currentTurnPlayerId,
       turnRemainingMs,
       turnTotalMs: hasActiveTurnTimer ? TIMERS.TURN_VISIBLE_MS : null,
+      turnIsAfkWarning: hasActiveTurnTimer ? this.turnIsAfkWarning : false,
       trickNumber: this.trickNumber,
       trickWinnerId: this.trickWinnerId,
       lastTrickPoints: this.lastTrickPoints,
@@ -822,11 +1039,15 @@ class RentzGame {
       standings: this.getStandings(),
       players: this.players.map((p) => {
         const placeIdx = this.rentzFinishOrder.indexOf(p.id);
+        const meta = this.seatMeta[p.id] || {};
         return {
           id: p.id,
           nickname: p.nickname,
           seatIndex: p.seatIndex,
           connected: connectionMap[p.id] !== false,
+          isBot: Boolean(meta.isBot),
+          isAfk: Boolean(meta.isAfk),
+          consecutiveTimeouts: meta.consecutiveTimeouts || 0,
           cardCount: (this.hands[p.id] || []).length,
           score: this.scores[p.id] || 0,
           roundDelta: this.roundDeltas[p.id] || 0,

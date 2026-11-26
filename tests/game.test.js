@@ -196,7 +196,87 @@ async function runTests() {
   TIMERS.TURN_VISIBLE_MS = 30000;
   TIMERS.TURN_GRACE_MS = 3000;
 
-  console.log('6. Verificare server Express + Socket.IO si fisiere frontend...');
+  console.log('6. Verificare Bot la iesire voluntara + sistem AFK (2x timeout -> a 3-a oara 10s intra in AFK -> Reia Jocul)...');
+  TIMERS.TURN_VISIBLE_MS = 90;
+  TIMERS.TURN_GRACE_MS = 20;
+  TIMERS.AFK_THIRD_STRIKE_MS = 40;
+  TIMERS.BOT_ACTION_DELAY_MS = 15;
+
+  const rmBot = new RoomManager();
+  rmBot.createRoom('u1', 'Alex', 's1');
+  const bCode = rmBot.getRoomByPlayer('u1').code;
+  rmBot.joinRoom('u2', 'Mihai', bCode, 's2');
+  rmBot.joinRoom('u3', 'Elena', bCode, 's3');
+  rmBot.toggleReady('u1');
+  rmBot.toggleReady('u2');
+  rmBot.toggleReady('u3');
+
+  const activeRoom = rmBot.rooms.get(bCode);
+  assert.strictEqual(activeRoom.status, 'in_game');
+
+  // u1 alege Pe Vazute -> Whist
+  activeRoom.game.chooseBlindMode('u1', false);
+  activeRoom.game.chooseSubgame('u1', 'whist');
+
+  // u2 paraseste voluntar meciul -> jocul NU se opreste, iar cand ii vine randul u2 (Bot) muta automat!
+  const leaveRes = rmBot.leaveRoom('u2');
+  assert.strictEqual(activeRoom.status, 'in_game', 'Meciul trebuie sa continue cand iese un jucator!');
+  assert.strictEqual(leaveRes.deleted, undefined);
+  assert.strictEqual(rmBot.getRoomByPlayer('u2'), null, 'u2 a iesit voluntar si nu mai e legat de camera');
+
+  // u1 joaca prima carte -> randul trece la u2 (Bot), care pune automat o carte valida in ~15ms!
+  activeRoom.game.playCard('u1', activeRoom.game.getPlayableTrickCards('u1')[0]);
+  await new Promise((r) => setTimeout(r, 35));
+  assert.strictEqual(activeRoom.game.currentTurnPlayerId, 'u3', 'Botul lui u2 trebuia sa fi jucat automat!');
+
+  // Testam acum cele 3 abateri consecutive pe u3:
+  // Abaterea 1: expira timerul complet -> consecutiveTimeouts devine 1, isAfk ramane false
+  await new Promise((r) => setTimeout(r, 130));
+  assert.strictEqual(activeRoom.game.seatMeta['u3'].consecutiveTimeouts, 1);
+  assert.strictEqual(activeRoom.game.seatMeta['u3'].isAfk, false);
+
+  // Asteptam rezolvarea mainii 1 + deschiderea mainii 2 pana ajunge iar randul la u3
+  await new Promise((r) => setTimeout(r, 30));
+  while (activeRoom.game.currentTurnPlayerId !== 'u3') {
+    const cur = activeRoom.game.currentTurnPlayerId;
+    if (!activeRoom.game.isSeatAutomated(cur)) {
+      activeRoom.game.playCard(cur, activeRoom.game.getPlayableTrickCards(cur)[0]);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+
+  // Abaterea 2 pe u3: expira iar timerul complet -> consecutiveTimeouts devine 2, isAfk inca false
+  await new Promise((r) => setTimeout(r, 130));
+  assert.strictEqual(activeRoom.game.seatMeta['u3'].consecutiveTimeouts, 2);
+  assert.strictEqual(activeRoom.game.seatMeta['u3'].isAfk, false);
+
+  // Ajungem la a 3-a tura a lui u3 -> turnIsAfkWarning trebuie sa fie true, iar dupa doar AFK_THIRD_STRIKE_MS (40ms < 110ms!) intra in AFK!
+  await new Promise((r) => setTimeout(r, 30));
+  while (activeRoom.game.currentTurnPlayerId !== 'u3') {
+    const cur = activeRoom.game.currentTurnPlayerId;
+    if (!activeRoom.game.isSeatAutomated(cur)) {
+      activeRoom.game.playCard(cur, activeRoom.game.getPlayableTrickCards(cur)[0]);
+    }
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  assert.strictEqual(activeRoom.game.getStateForPlayer('u3').turnIsAfkWarning, true);
+  await new Promise((r) => setTimeout(r, 60));
+  assert.strictEqual(activeRoom.game.seatMeta['u3'].isAfk, true, 'La a 3-a abatere trebuia sa intre in AFK la pragul de 20s!');
+
+  // u3 inca este in camera (reconectare la login il baga direct in meci!) si apasa Reia Jocul -> iese din AFK!
+  const reconU3 = rmBot.reconnectSession('u3', 's3_new', 'Elena');
+  assert.strictEqual(reconU3.ok, true, 'Jucatorul AFK reconectat la cont intra automat inapoi in meciul activ!');
+  assert.strictEqual(activeRoom.game.resumeFromAfk('u3').ok, true);
+  assert.strictEqual(activeRoom.game.seatMeta['u3'].isAfk, false);
+  assert.strictEqual(activeRoom.game.seatMeta['u3'].consecutiveTimeouts, 0);
+
+  activeRoom.game.destroy();
+  TIMERS.TURN_VISIBLE_MS = 30000;
+  TIMERS.TURN_GRACE_MS = 3000;
+  TIMERS.AFK_THIRD_STRIKE_MS = 10000;
+  TIMERS.BOT_ACTION_DELAY_MS = 400;
+
+  console.log('7. Verificare server Express + Socket.IO si fisiere frontend...');
   const { server, io } = require('../server/index');
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
