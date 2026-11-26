@@ -1193,9 +1193,12 @@ function renderTableCenter(g, me) {
     const rowsHtml = g.standings
       .map((st, idx) => {
         const medal = medals[idx] || `${idx + 1}.`;
+        const zeroBadge = st.isZeroWinner
+          ? ' <span class="mini-chip turn-chip">🎯 0 Exact!</span>'
+          : '';
         return `
           <tr>
-            <td>${medal} <strong>${escapeHtml(st.nickname)}</strong></td>
+            <td>${medal} <strong>${escapeHtml(st.nickname)}</strong>${zeroBadge}</td>
             <td></td>
             <td><strong>${st.score} pct</strong></td>
           </tr>
@@ -1203,11 +1206,16 @@ function renderTableCenter(g, me) {
       })
       .join('');
 
+    const topEntry = g.standings[0];
+    const winners = g.standings.filter((st) =>
+      topEntry?.isZeroWinner ? st.isZeroWinner : st.score === topEntry?.score
+    );
+    const winnersNames = winners.map((w) => escapeHtml(w.nickname)).join(', ');
+    const zeroNote = topEntry?.isZeroWinner ? ' — Victorie specială cu 0 puncte exact!' : '';
+
     panel.innerHTML = `
       <h3>🏆 Partidă Încheiată!</h3>
-      <p class="summary-reason">Câștigător: <strong>${escapeHtml(
-        g.standings[0]?.nickname || ''
-      )}</strong></p>
+      <p class="summary-reason">Câștigător: <strong>${winnersNames}</strong>${zeroNote}</p>
       <table class="summary-table">
         <thead>
           <tr>

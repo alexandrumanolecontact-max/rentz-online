@@ -526,7 +526,25 @@ async function runTests() {
   assert.strictEqual(lastSubGame.phase, 'playing_tricks', 'Ultimul joc trebuie sa inceapa direct!');
   lastSubGame.destroy();
 
-  console.log('10. Verificare server Express + Socket.IO si fisiere frontend...');
+  console.log('10. Verificare regula speciala de final: 0 puncte exact la game_over = Locul 1 Castigator...');
+  const zeroWinGame = new RentzGame(players);
+  zeroWinGame.scores = { p1: 850, p2: 0, p3: 420, p4: -150 };
+  // In timpul partidei (nu e game_over), p1 (850) este pe primul loc
+  assert.strictEqual(zeroWinGame.getStandings()[0].id, 'p1');
+  // La finalul partidei (game_over), p2 (cu 0 puncte exact!) urca pe Locul 1 peste 850!
+  zeroWinGame.phase = 'game_over';
+  const finalStandings = zeroWinGame.getStandings();
+  assert.strictEqual(finalStandings[0].id, 'p2', 'Jucatorul cu exact 0 puncte la final trebuie sa fie pe Locul 1!');
+  assert.strictEqual(finalStandings[0].isZeroWinner, true);
+  assert.strictEqual(finalStandings[1].id, 'p1');
+  assert.strictEqual(finalStandings[2].id, 'p3');
+  assert.strictEqual(finalStandings[3].id, 'p4');
+  // Iar daca nimeni nu are 0 la final, castiga cel cu punctajul cel mai mare
+  zeroWinGame.scores = { p1: 850, p2: 100, p3: 920, p4: -150 };
+  assert.strictEqual(zeroWinGame.getStandings()[0].id, 'p3');
+  zeroWinGame.destroy();
+
+  console.log('11. Verificare server Express + Socket.IO si fisiere frontend...');
   const { server, io } = require('../server/index');
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;

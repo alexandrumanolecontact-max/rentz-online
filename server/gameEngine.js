@@ -1262,13 +1262,23 @@ class RentzGame {
   }
 
   getStandings() {
+    const isFinal = this.phase === 'game_over';
     return this.players
-      .map((p) => ({
-        id: p.id,
-        nickname: p.nickname,
-        score: this.scores[p.id] || 0,
-      }))
-      .sort((a, b) => b.score - a.score);
+      .map((p) => {
+        const score = this.scores[p.id] || 0;
+        return {
+          id: p.id,
+          nickname: p.nickname,
+          score,
+          isZeroWinner: isFinal && score === 0,
+        };
+      })
+      .sort((a, b) => {
+        if (isFinal && a.isZeroWinner !== b.isZeroWinner) {
+          return a.isZeroWinner ? -1 : 1;
+        }
+        return b.score - a.score;
+      });
   }
 
   getStateForPlayer(viewerId, connectionMap = {}) {
