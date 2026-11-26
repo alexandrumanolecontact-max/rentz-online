@@ -836,8 +836,9 @@ function renderGame(room) {
         return `<span class="${col}">${entry.card.label}${entry.card.symbol}</span>`;
       })
       .join(' ');
+    const breakdownHint = g.lastTrick.breakdown ? ` (${escapeHtml(g.lastTrick.breakdown)})` : '';
     const lastPts = g.lastTrick.points
-      ? ` · <strong>${formatSigned(g.lastTrick.points)}p</strong>`
+      ? ` · <strong>${formatSigned(g.lastTrick.points)}p</strong>${breakdownHint}`
       : '';
     lastTrickBox.innerHTML = `
       <div>Ultima mână (${escapeHtml(g.lastTrick.winnerName)}${lastPts}):</div>
@@ -1016,7 +1017,9 @@ function renderTableCenter(g, me) {
         if (isWinner && g.lastTrickPoints) {
           const pop = document.createElement('div');
           pop.className = `trick-pts-pop ${g.lastTrickPoints > 0 ? 'pos' : 'neg'}`;
-          pop.textContent = `${formatSigned(g.lastTrickPoints)} pct`;
+          pop.textContent = g.lastTrickBreakdown
+            ? `${formatSigned(g.lastTrickPoints)}p (${g.lastTrickBreakdown})`
+            : `${formatSigned(g.lastTrickPoints)} pct`;
           slot.appendChild(pop);
         }
         slot.appendChild(createCardElement(entry.card));

@@ -134,7 +134,7 @@ const SUBGAMES = [
     mode: 'tricks',
     shortDesc: 'K♥ -200 · Q -30 · ♦ -20 · Mână -50',
     description:
-      'Cumulează penalizările: Popa de Inimă Roșie (-200), Dame (-30/buc), Romburi (-20/buc) și Mâini luate (-50/mână).',
+      'Cumulează penalizările: Popa de Inimă Roșie (-200), Dame (-30/buc), Romburi (-20/buc) și Mâini luate (-50/mână). 10♣ nu valorează nimic.',
   },
   {
     id: 'ten_of_clubs',
@@ -163,7 +163,7 @@ const SUBGAMES = [
     mode: 'tricks',
     shortDesc: '10♣ +200 · Q +30 · ♦ +20 · Mână +50',
     description:
-      'Cumulează pe plus: 10 de Treflă (+200), Dame (+30/buc), Romburi (+20/buc) și Whist (+50/mână luată).',
+      'Cumulează pe plus: 10 de Treflă (+200), Dame (+30/buc), Romburi (+20/buc) și Whist (+50/mână luată). K♥ nu valorează nimic.',
   },
   {
     id: 'rentz',

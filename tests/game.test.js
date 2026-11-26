@@ -129,7 +129,77 @@ async function runTests() {
     players.forEach((p) => game.acknowledgeRoundSummary(p.id));
   }
 
-  console.log('4. Verificare sub-joc Rentz Pe Nevazute (800 / 400 / 200 / 0)...');
+  console.log('4. Verificare directa pe carte la Totale Plus si Totale Minus (K♥ = 0 la Plus, 10♣ = 0 la Minus, x1 si x2)...');
+  const cardCheckGame = new RentzGame(players);
+  const trickWithKH = [
+    { suit: 'hearts', value: 14 },
+    { suit: 'hearts', value: 13 }, // K♥
+    { suit: 'hearts', value: 9 },
+    { suit: 'hearts', value: 8 },
+  ];
+  const trickWith10C = [
+    { suit: 'clubs', value: 14 },
+    { suit: 'clubs', value: 10 }, // 10♣
+    { suit: 'clubs', value: 9 },
+    { suit: 'clubs', value: 8 },
+  ];
+
+  // Totale Plus x1 (Pe Vazute)
+  cardCheckGame.currentSubgame = { id: 'totals_plus' };
+  cardCheckGame.scoreMultiplier = 1;
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWithKH).total,
+    50,
+    'La Totale Plus x1, K♥ trebuie sa valoreze 0 (doar +50 mana Whist)!'
+  );
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWith10C).total,
+    250,
+    'La Totale Plus x1, 10♣ trebuie sa adauge +200 (+50 mana = +250)!'
+  );
+
+  // Totale Plus x2 (Pe Nevazute)
+  cardCheckGame.scoreMultiplier = 2;
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWithKH).total,
+    100,
+    'La Totale Plus x2, K♥ trebuie sa valoreze 0 (doar +100 mana Whist)!'
+  );
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWith10C).total,
+    500,
+    'La Totale Plus x2, 10♣ trebuie sa adauge +400 (+100 mana = +500)!'
+  );
+
+  // Totale Minus x1 (Pe Vazute)
+  cardCheckGame.currentSubgame = { id: 'totals_minus' };
+  cardCheckGame.scoreMultiplier = 1;
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWith10C).total,
+    -50,
+    'La Totale Minus x1, 10♣ trebuie sa valoreze 0 (doar -50 mana No Tricks)!'
+  );
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWithKH).total,
+    -250,
+    'La Totale Minus x1, K♥ trebuie sa scada -200 (-50 mana = -250)!'
+  );
+
+  // Totale Minus x2 (Pe Nevazute)
+  cardCheckGame.scoreMultiplier = 2;
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWith10C).total,
+    -100,
+    'La Totale Minus x2, 10♣ trebuie sa valoreze 0 (doar -100 mana No Tricks)!'
+  );
+  assert.strictEqual(
+    cardCheckGame.calculateTrickPoints(trickWithKH).total,
+    -500,
+    'La Totale Minus x2, K♥ trebuie sa scada -400 (-100 mana = -500)!'
+  );
+  cardCheckGame.destroy();
+
+  console.log('4b. Verificare sub-joc Rentz Pe Nevazute (800 / 400 / 200 / 0)...');
   assert.strictEqual(game.chooserId, 'p1');
   assert.strictEqual(game.chooseBlindMode('p1', true).ok, true);
   assert.strictEqual(game.getStateForPlayer('p1').myHand.length, 0);

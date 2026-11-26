@@ -69,6 +69,7 @@ class RentzGame {
     this.lastTrick = null;
     this.trickWinnerId = null;
     this.lastTrickPoints = 0;
+    this.lastTrickBreakdown = '';
     this.statusBanner = '';
 
     // Stare specifică sub-jocului Rentz
@@ -448,6 +449,7 @@ class RentzGame {
     this.lastTrick = null;
     this.trickWinnerId = null;
     this.lastTrickPoints = 0;
+    this.lastTrickBreakdown = '';
     this.rentzBoard = null;
     this.rentzFinishOrder = [];
     this.rentzLastAction = '';
@@ -649,7 +651,7 @@ class RentzGame {
     }
 
     // Calculăm și aplicăm IMEDIAT punctele acestei mâini la scorul câștigătorului levatei
-    const trickPoints = this.calculateTrickPoints(trickCards);
+    const { total: trickPoints, breakdown } = this.calculateTrickPoints(trickCards);
     if (trickPoints !== 0) {
       this.scores[winnerId] += trickPoints;
       this.roundDeltas[winnerId] = (this.roundDeltas[winnerId] || 0) + trickPoints;
@@ -658,13 +660,15 @@ class RentzGame {
     this.phase = 'trick_complete';
     this.trickWinnerId = winnerId;
     this.lastTrickPoints = trickPoints;
+    this.lastTrickBreakdown = breakdown;
     this.currentTurnPlayerId = null;
 
+    const breakdownSuffix = breakdown ? `: ${breakdown}` : '';
     const ptsText =
       trickPoints > 0
-        ? ` (+${trickPoints} pct)`
+        ? ` (+${trickPoints} pct${breakdownSuffix})`
         : trickPoints < 0
-        ? ` (${trickPoints} pct)`
+        ? ` (${trickPoints} pct${breakdownSuffix})`
         : '';
     this.statusBanner = `${winner.nickname} ia mâna cu ${winningEntry.card.label}${winningEntry.card.symbol}!${ptsText}`;
 
@@ -679,8 +683,9 @@ class RentzGame {
   }
 
   calculateTrickPoints(trickCards) {
-    if (!this.currentSubgame) return 0;
+    if (!this.currentSubgame) return { total: 0, breakdown: '' };
     const subId = this.currentSubgame.id;
+    const mult = this.scoreMultiplier || 1;
 
     const hasKH = trickCards.some((c) => c.suit === 'hearts' && c.value === 13);
     const has10C = trickCards.some((c) => c.suit === 'clubs' && c.value === 10);
@@ -688,34 +693,75 @@ class RentzGame {
     const diamondsCount = trickCards.filter((c) => c.suit === 'diamonds').length;
 
     let basePts = 0;
+    const parts = [];
+
     if (subId === 'king_of_hearts') {
-      basePts = hasKH ? SCORING.KING_OF_HEARTS : 0;
+      if (hasKH) {
+        basePts = SCORING.KING_OF_HEARTS;
+        parts.push(`K♥ ${SCORING.KING_OF_HEARTS * mult}`);
+      }
     } else if (subId === 'ten_of_clubs') {
-      basePts = has10C ? SCORING.TEN_OF_CLUBS : 0;
+      if (has10C) {
+        basePts = SCORING.TEN_OF_CLUBS;
+        parts.push(`10♣ +${SCORING.TEN_OF_CLUBS * mult}`);
+      }
     } else if (subId === 'queens') {
       basePts = queensCount * SCORING.QUEEN_MINUS;
+      if (queensCount > 0) {
+        parts.push(`Q×${queensCount} ${basePts * mult}`);
+      }
     } else if (subId === 'diamonds') {
       basePts = diamondsCount * SCORING.DIAMOND_MINUS;
+      if (diamondsCount > 0) {
+        parts.push(`♦×${diamondsCount} ${basePts * mult}`);
+      }
     } else if (subId === 'no_tricks') {
       basePts = SCORING.NO_TRICKS;
     } else if (subId === 'whist') {
       basePts = SCORING.WHIST_TRICK;
     } else if (subId === 'totals_plus') {
-      basePts =
-        (has10C ? SCORING.TEN_OF_CLUBS : 0) +
-        queensCount * SCORING.QUEEN_PLUS +
-        diamondsCount * SCORING.DIAMOND_PLUS +
-        SCORING.WHIST_TRICK;
+      // La Totale Plus: K♥ NU valorează nimic (0 pct)! Se punctează doar: Mâna (+50), 10♣ (+200), Dame (+30/buc), Romburi (+20/buc)
+      basePts += SCORING.WHIST_TRICK;
+      parts.push(`Mână +${SCORING.WHIST_TRICK * mult}`);
+      if (has10C) {
+        basePts += SCORING.TEN_OF_CLUBS;
+        parts.push(`10♣ +${SCORING.TEN_OF_CLUBS * mult}`);
+      }
+      if (queensCount > 0) {
+        const qPts = queensCount * SCORING.QUEEN_PLUS;
+        basePts += qPts;
+        parts.push(`Q×${queensCount} +${qPts * mult}`);
+      }
+      if (diamondsCount > 0) {
+        const dPts = diamondsCount * SCORING.DIAMOND_PLUS;
+        basePts += dPts;
+        parts.push(`♦×${diamondsCount} +${dPts * mult}`);
+      }
     } else if (subId === 'totals_minus') {
-      basePts =
-        (hasKH ? SCORING.KING_OF_HEARTS : 0) +
-        queensCount * SCORING.QUEEN_MINUS +
-        diamondsCount * SCORING.DIAMOND_MINUS +
-        SCORING.NO_TRICKS;
+      // La Totale Minus: 10♣ NU valorează nimic (0 pct)! Se scad doar: Mâna (-50), K♥ (-200), Dame (-30/buc), Romburi (-20/buc)
+      basePts += SCORING.NO_TRICKS;
+      parts.push(`Mână ${SCORING.NO_TRICKS * mult}`);
+      if (hasKH) {
+        basePts += SCORING.KING_OF_HEARTS;
+        parts.push(`K♥ ${SCORING.KING_OF_HEARTS * mult}`);
+      }
+      if (queensCount > 0) {
+        const qPts = queensCount * SCORING.QUEEN_MINUS;
+        basePts += qPts;
+        parts.push(`Q×${queensCount} ${qPts * mult}`);
+      }
+      if (diamondsCount > 0) {
+        const dPts = diamondsCount * SCORING.DIAMOND_MINUS;
+        basePts += dPts;
+        parts.push(`♦×${diamondsCount} ${dPts * mult}`);
+      }
     }
 
-    const scaled = basePts * this.scoreMultiplier;
-    return scaled === 0 ? 0 : scaled;
+    const scaled = basePts * mult;
+    return {
+      total: scaled === 0 ? 0 : scaled,
+      breakdown: parts.join(', '),
+    };
   }
 
   completeTrickTransition(winnerId) {
@@ -723,11 +769,13 @@ class RentzGame {
       winnerId,
       winnerName: this.getPlayerById(winnerId)?.nickname || '',
       points: this.lastTrickPoints,
+      breakdown: this.lastTrickBreakdown,
       cards: this.currentTrick.slice(),
     };
     this.currentTrick = [];
     this.trickWinnerId = null;
     this.lastTrickPoints = 0;
+    this.lastTrickBreakdown = '';
 
     const earlyEndReason = this.checkTrickEarlyEnd();
     if (earlyEndReason || this.trickNumber >= CARDS_PER_PLAYER) {
@@ -781,50 +829,6 @@ class RentzGame {
       default:
         return null;
     }
-  }
-
-  scoreTrickRound() {
-    const deltas = {};
-    const subId = this.currentSubgame.id;
-
-    for (const p of this.players) {
-      const cards = this.capturedCards[p.id] || [];
-      const tricks = this.tricksWon[p.id] || 0;
-      const hasKH = cards.some((c) => c.suit === 'hearts' && c.value === 13);
-      const has10C = cards.some((c) => c.suit === 'clubs' && c.value === 10);
-      const queensCount = cards.filter((c) => c.value === 12).length;
-      const diamondsCount = cards.filter((c) => c.suit === 'diamonds').length;
-
-      let pts = 0;
-      if (subId === 'king_of_hearts') {
-        pts = hasKH ? SCORING.KING_OF_HEARTS : 0;
-      } else if (subId === 'ten_of_clubs') {
-        pts = has10C ? SCORING.TEN_OF_CLUBS : 0;
-      } else if (subId === 'queens') {
-        pts = queensCount * SCORING.QUEEN_MINUS;
-      } else if (subId === 'diamonds') {
-        pts = diamondsCount * SCORING.DIAMOND_MINUS;
-      } else if (subId === 'no_tricks') {
-        pts = tricks * SCORING.NO_TRICKS;
-      } else if (subId === 'whist') {
-        pts = tricks * SCORING.WHIST_TRICK;
-      } else if (subId === 'totals_plus') {
-        pts =
-          (has10C ? SCORING.TEN_OF_CLUBS : 0) +
-          queensCount * SCORING.QUEEN_PLUS +
-          diamondsCount * SCORING.DIAMOND_PLUS +
-          tricks * SCORING.WHIST_TRICK;
-      } else if (subId === 'totals_minus') {
-        pts =
-          (hasKH ? SCORING.KING_OF_HEARTS : 0) +
-          queensCount * SCORING.QUEEN_MINUS +
-          diamondsCount * SCORING.DIAMOND_MINUS +
-          tricks * SCORING.NO_TRICKS;
-      }
-      deltas[p.id] = pts;
-    }
-
-    return deltas;
   }
 
   getNextActiveRentzPlayer(fromPlayerId) {
@@ -1087,6 +1091,7 @@ class RentzGame {
       trickNumber: this.trickNumber,
       trickWinnerId: this.trickWinnerId,
       lastTrickPoints: this.lastTrickPoints,
+      lastTrickBreakdown: this.lastTrickBreakdown,
       statusBanner: this.statusBanner,
       currentSubgame: this.currentSubgame,
       subgamesCatalog: SUBGAMES,
