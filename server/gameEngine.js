@@ -320,13 +320,13 @@ class RentzGame {
     switch (this.currentSubgame.id) {
       case 'king_of_hearts': {
         if (allCaptured.some((c) => c.suit === 'hearts' && c.value === 13)) {
-          return 'Regele de Cupă (K♥) a fost luat!';
+          return 'Popa de Inimă Roșie (K♥) a fost luat!';
         }
         return null;
       }
       case 'ten_of_clubs': {
         if (allCaptured.some((c) => c.suit === 'clubs' && c.value === 10)) {
-          return '10 de Treflă (10♣) a fost câștigat!';
+          return '10-le de Treflă (10♣) a fost luat!';
         }
         return null;
       }
@@ -341,7 +341,7 @@ class RentzGame {
         const totalDiamondsInDeck = 2 * this.numPlayers;
         const diamonds = allCaptured.filter((c) => c.suit === 'diamonds').length;
         if (diamonds >= totalDiamondsInDeck) {
-          return 'Toate Carourile au fost luate!';
+          return 'Toate Romburile au fost luate!';
         }
         return null;
       }
@@ -365,22 +365,28 @@ class RentzGame {
       let pts = 0;
       if (subId === 'king_of_hearts') {
         pts = hasKH ? SCORING.KING_OF_HEARTS : 0;
-      } else if (subId === 'queens') {
-        pts = queensCount * SCORING.QUEEN;
-      } else if (subId === 'diamonds') {
-        pts = diamondsCount * SCORING.DIAMOND;
-      } else if (subId === 'tricks') {
-        pts = tricks * SCORING.TRICK_NEGATIVE;
       } else if (subId === 'ten_of_clubs') {
         pts = has10C ? SCORING.TEN_OF_CLUBS : 0;
+      } else if (subId === 'queens') {
+        pts = queensCount * SCORING.QUEEN_MINUS;
+      } else if (subId === 'diamonds') {
+        pts = diamondsCount * SCORING.DIAMOND_MINUS;
+      } else if (subId === 'no_tricks') {
+        pts = tricks * SCORING.NO_TRICKS;
       } else if (subId === 'whist') {
         pts = tricks * SCORING.WHIST_TRICK;
-      } else if (subId === 'totals') {
+      } else if (subId === 'totals_plus') {
+        pts =
+          (has10C ? SCORING.TEN_OF_CLUBS : 0) +
+          queensCount * SCORING.QUEEN_PLUS +
+          diamondsCount * SCORING.DIAMOND_PLUS +
+          tricks * SCORING.WHIST_TRICK;
+      } else if (subId === 'totals_minus') {
         pts =
           (hasKH ? SCORING.KING_OF_HEARTS : 0) +
-          queensCount * SCORING.QUEEN +
-          diamondsCount * SCORING.DIAMOND +
-          tricks * SCORING.TRICK_NEGATIVE;
+          queensCount * SCORING.QUEEN_MINUS +
+          diamondsCount * SCORING.DIAMOND_MINUS +
+          tricks * SCORING.NO_TRICKS;
       }
       deltas[p.id] = pts;
     }

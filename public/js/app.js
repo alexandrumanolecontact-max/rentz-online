@@ -626,19 +626,43 @@ function renderCapturedBadges(p, subgame) {
     }
     return '';
   }
-  const badges = [`<span class="mini-chip">Levate: ${p.tricksWon}</span>`];
-  if (p.captured.hasKingOfHearts) {
+
+  const id = subgame.id;
+  const badges = [];
+
+  if (id === 'whist' || id === 'totals_plus') {
+    badges.push(
+      `<span class="mini-chip${p.tricksWon > 0 ? ' good-chip' : ''}">Mâini: ${p.tricksWon}</span>`
+    );
+  } else if (id === 'no_tricks' || id === 'totals_minus') {
+    badges.push(
+      `<span class="mini-chip${p.tricksWon > 0 ? ' danger-chip' : ''}">Mâini: ${p.tricksWon}</span>`
+    );
+  } else {
+    badges.push(`<span class="mini-chip">Mâini: ${p.tricksWon}</span>`);
+  }
+
+  if ((id === 'king_of_hearts' || id === 'totals_minus') && p.captured.hasKingOfHearts) {
     badges.push('<span class="mini-chip danger-chip">K♥</span>');
   }
-  if (p.captured.hasTenOfClubs) {
+  if ((id === 'ten_of_clubs' || id === 'totals_plus') && p.captured.hasTenOfClubs) {
     badges.push('<span class="mini-chip good-chip">10♣</span>');
   }
   if (p.captured.queensCount > 0) {
-    badges.push(`<span class="mini-chip danger-chip">Q×${p.captured.queensCount}</span>`);
+    if (id === 'queens' || id === 'totals_minus') {
+      badges.push(`<span class="mini-chip danger-chip">Q×${p.captured.queensCount}</span>`);
+    } else if (id === 'totals_plus') {
+      badges.push(`<span class="mini-chip good-chip">Q×${p.captured.queensCount}</span>`);
+    }
   }
   if (p.captured.diamondsCount > 0) {
-    badges.push(`<span class="mini-chip danger-chip">♦×${p.captured.diamondsCount}</span>`);
+    if (id === 'diamonds' || id === 'totals_minus') {
+      badges.push(`<span class="mini-chip danger-chip">♦×${p.captured.diamondsCount}</span>`);
+    } else if (id === 'totals_plus') {
+      badges.push(`<span class="mini-chip good-chip">♦×${p.captured.diamondsCount}</span>`);
+    }
   }
+
   return badges.join('');
 }
 

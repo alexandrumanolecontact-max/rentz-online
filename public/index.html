@@ -441,52 +441,56 @@
     </div>
   </div>
 
-  <!-- MODAL: Reguli de bază Rentz -->
+  <!-- MODAL: Reguli Rentz -->
   <div id="modal-rules" class="modal-backdrop hidden" role="dialog" aria-modal="true">
     <div class="modal-card modal-lg">
       <div class="modal-header">
-        <h3>Reguli de bază — Rentz</h3>
+        <h3>Reguli &amp; Punctaj — Rentz</h3>
         <button type="button" class="btn-close" data-close-modal="modal-rules">✕</button>
       </div>
       <div class="modal-body rules-content">
         <p>
-          <strong>Rentz</strong> se joacă în <strong>3–6 jucători</strong>. Pachetul este ajustat automat astfel încât fiecare jucător să primească exact <strong>8 cărți</strong> (cele mai mari cărți din pachet: de la 9 la As în 3 jucători, 7–As în 4, 5–As în 5, 3–As în 6).
+          <strong>Rentz</strong> se joacă în <strong>3–6 jucători</strong>. Pachetul este ajustat automat astfel încât fiecare jucător să primească exact <strong>8 cărți</strong> (de la 9 la As în 3 jucători, 7–As în 4, 5–As în 5, 3–As în 6).
         </p>
         <p>
-          Fiecare jucător are la dispoziție cele <strong>8 sub-jocuri</strong> de mai jos și poate alege fiecare sub-joc o singură dată pe parcursul partidei (după ce își vede cele 8 cărți). Nu există atu, iar la jocurile pe levate <strong>obligația la culoare</strong> este strictă.
+          Fiecare jucător are la dispoziție cele <strong>9 sub-jocuri</strong> de mai jos și poate alege fiecare sub-joc o singură dată pe parcursul partidei (după ce își vede cele 8 cărți). Nu există atu, iar la jocurile pe mâini <strong>obligația la culoare</strong> este strictă.
         </p>
         <div class="rules-grid">
           <div class="rule-item neg">
-            <strong>K♥ Popa de Roșu (-100 pct)</strong>
-            <span>Evită levata care conține Regele de Cupă (K♥).</span>
-          </div>
-          <div class="rule-item neg">
-            <strong>Q Dame (-25 pct / Damă)</strong>
-            <span>Fiecare Damă luată scade 25 de puncte.</span>
-          </div>
-          <div class="rule-item neg">
-            <strong>♦ Carouri (-20 pct / Carou)</strong>
-            <span>Fiecare carte de Caro luată scade 20 de puncte.</span>
-          </div>
-          <div class="rule-item neg">
-            <strong>−M Levate (-20 pct / Levată)</strong>
-            <span>Fiecare levată (mână) luată scade 20 de puncte.</span>
-          </div>
-          <div class="rule-item neg">
-            <strong>∑− Totale</strong>
-            <span>Cumulează toate cele 4 jocuri negative într-o singură rundă (K♥ + Dame + Carouri + Levate).</span>
+            <strong>K♥ Popa de Inimă Roșie (-200 pct)</strong>
+            <span>Cine ia Popa de Inimă Roșie (K♥) scade cu 200 de puncte.</span>
           </div>
           <div class="rule-item pos">
-            <strong>10♣ Zece de Treflă (+100 pct)</strong>
-            <span>Câștigă levata care conține 10 de Treflă pentru +100 de puncte.</span>
+            <strong>10♣ 10 de Treflă (+200 pct)</strong>
+            <span>Cine ia 10-le de Treflă (10♣) primește +200 de puncte.</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>Q Dame (-30 pct / Damă)</strong>
+            <span>Sunt 4 Dame în joc — pentru fiecare Damă luată se scad 30 de puncte.</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>♦ Romburi (-20 pct / Romb)</strong>
+            <span>Pentru fiecare Romb luat se scad 20 de puncte.</span>
           </div>
           <div class="rule-item pos">
-            <strong>+M Whist (+20 pct / Levată)</strong>
-            <span>Fiecare levată câștigată aduce +20 de puncte.</span>
+            <strong>+M Whist (+50 pct / Mână)</strong>
+            <span>Pentru fiecare mână luată se adaugă 50 de puncte.</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>−M No Tricks (-50 pct / Mână)</strong>
+            <span>Pentru fiecare mână luată se scad 50 de puncte.</span>
           </div>
           <div class="rule-item pos">
-            <strong>★ Rentz (Etalare pe culori)</strong>
-            <span>Se deschide fiecare culoare de la cartea de mijloc (Q în 3p, J în 4p, 10 în 5p, 9 în 6p) și se depun cărți adiacente în sus sau în jos. <strong>Asul</strong> oferă încă o mutare, iar <strong>cea mai mică carte</strong> sare următorul jucător. Nu ai voie să spui Pas dacă ai mutare validă!</span>
+            <strong>∑+ Totale Plus</strong>
+            <span>10 de Treflă (+200), Dame (+30 / Damă), Romburi (+20 / Romb) și Whist (+50 / Mână luată).</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>∑− Totale Minus</strong>
+            <span>Popa de Inimă Roșie (-200), Dame (-30 / Damă), Romburi (-20 / Romb) și No Tricks (-50 / Mână luată).</span>
+          </div>
+          <div class="rule-item pos">
+            <strong>★ Rentz (400 / 200 / 100 pct)</strong>
+            <span>Etalare pe culori de la cartea de mijloc (Q în 3p, J în 4p, 10 în 5p, 9 în 6p). Locul 1: <strong>+400 pct</strong>, Locul 2: <strong>+200 pct</strong>, Locul 3: <strong>+100 pct</strong>. Asul oferă încă o mutare, iar cea mai mică carte sare următorul jucător.</span>
           </div>
         </div>
       </div>

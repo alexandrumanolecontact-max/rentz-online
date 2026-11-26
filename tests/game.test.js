@@ -2,14 +2,30 @@ const assert = require('assert');
 const { createDeck } = require('../server/deck');
 const { RoomManager } = require('../server/roomManager');
 const { RentzGame } = require('../server/gameEngine');
-const { TIMERS } = require('../server/rulesConfig');
+const { TIMERS, SUBGAMES } = require('../server/rulesConfig');
 
 // Reducem timerele pentru rularea rapidă a testelor
-TIMERS.TRICK_RESOLVE_MS = 10;
+TIMERS.TRICK_RESOLVE_MS = 5;
 TIMERS.ROUND_SUMMARY_AUTO_MS = 30;
 
+async function playFullTrickRound(game) {
+  while (game.phase === 'playing_tricks') {
+    const numPlayers = game.numPlayers;
+    for (let step = 0; step < numPlayers; step++) {
+      const turnId = game.currentTurnPlayerId;
+      const validIds = game.getPlayableTrickCards(turnId);
+      assert(validIds.length > 0, 'Trebuie sa existe cel putin o carte jucabila');
+      const res = game.playCard(turnId, validIds[0]);
+      assert.strictEqual(res.ok, true);
+    }
+    assert.strictEqual(game.phase, 'trick_complete');
+    await new Promise((r) => setTimeout(r, 15));
+  }
+}
+
 async function runTests() {
-  console.log('1. Verificare pachet de carti pentru 3, 4, 5, 6 jucatori...');
+  console.log('1. Verificare pachet de carti pentru 3, 4, 5, 6 jucatori si cele 9 sub-jocuri...');
+  assert.strictEqual(SUBGAMES.length, 9, 'Trebuie sa fie exact 9 sub-jocuri');
   for (const n of [3, 4, 5, 6]) {
     const deck = createDeck(n);
     assert.strictEqual(deck.length, n * 8, `Pachetul pentru ${n} jucatori trebuie sa aiba ${n * 8} carti`);
@@ -22,17 +38,14 @@ async function runTests() {
   const code = c1.room.code;
   assert.strictEqual(code.length, 6);
 
-  // Nu poti da Ready cu 1 sau 2 jucatori
   assert.strictEqual(rm.toggleReady('p1').ok, false);
   assert.strictEqual(rm.joinRoom('p2', 'Mihai', code.toLowerCase(), 'sock2').ok, true);
   assert.strictEqual(rm.toggleReady('p1').ok, false);
 
-  // Al 3-lea jucator intra -> minimul (3) este atins!
   assert.strictEqual(rm.joinRoom('p3', 'Elena', code, 'sock3').ok, true);
   assert.strictEqual(rm.toggleReady('p1').started, false);
   assert.strictEqual(rm.toggleReady('p2').started, false);
 
-  // Intra al 4-lea jucator inainte ca p3 sa dea Ready -> jocul asteapta pe toti 4!
   assert.strictEqual(rm.joinRoom('p4', 'Vlad', code, 'sock4').ok, true);
   assert.strictEqual(rm.toggleReady('p3').started, false);
   const lastReady = rm.toggleReady('p4');
@@ -41,7 +54,7 @@ async function runTests() {
   assert.strictEqual(c1.room.status, 'in_game');
   c1.room.game.destroy();
 
-  console.log('3. Verificare sub-joc pe levate (Whist) si obligatia la culoare...');
+  console.log('3. Verificare punctaje noi (Whist, No Tricks, Popa -200, 10 Trefla +200, Dame -30, Romburi -20, Totale Plus +880, Totale Minus -880)...');
   const players = [
     { id: 'p1', nickname: 'Andrei' },
     { id: 'p2', nickname: 'Mihai' },
@@ -49,44 +62,44 @@ async function runTests() {
     { id: 'p4', nickname: 'Vlad' },
   ];
   const game = new RentzGame(players);
-  assert.strictEqual(game.phase, 'choosing_subgame');
-  assert.strictEqual(game.chooserId, 'p1');
-  assert.strictEqual(game.chooseSubgame('p2', 'whist').ok, false, 'Doar chooser-ul poate alege');
-  assert.strictEqual(game.chooseSubgame('p1', 'whist').ok, true);
-  assert.strictEqual(game.phase, 'playing_tricks');
+  assert.strictEqual(game.totalRounds, 36, '4 jucatori * 9 sub-jocuri = 36 runde');
 
-  // Simulam cele 8 levate la Whist respectand obligatia la culoare
-  for (let t = 0; t < 8; t++) {
-    for (let step = 0; step < 4; step++) {
-      const turnId = game.currentTurnPlayerId;
-      const validIds = game.getPlayableTrickCards(turnId);
-      assert(validIds.length > 0, 'Trebuie sa existe cel putin o carte jucabila');
-      const res = game.playCard(turnId, validIds[0]);
-      assert.strictEqual(res.ok, true);
-    }
-    assert.strictEqual(game.phase, 'trick_complete');
-    await new Promise((r) => setTimeout(r, 20));
+  const expectedRoundTotals4P = [
+    { chooser: 'p1', subgame: 'whist', expectedSum: 400 },        // 8 * +50
+    { chooser: 'p2', subgame: 'no_tricks', expectedSum: -400 },   // 8 * -50
+    { chooser: 'p3', subgame: 'king_of_hearts', expectedSum: -200 },
+    { chooser: 'p4', subgame: 'ten_of_clubs', expectedSum: 200 },
+    { chooser: 'p1', subgame: 'queens', expectedSum: -120 },      // 4 * -30
+    { chooser: 'p2', subgame: 'diamonds', expectedSum: -160 },    // 8 * -20
+    { chooser: 'p3', subgame: 'totals_plus', expectedSum: 880 },  // 200 + 120 + 160 + 400
+    { chooser: 'p4', subgame: 'totals_minus', expectedSum: -880 },// -200 - 120 - 160 - 400
+  ];
+
+  for (const tc of expectedRoundTotals4P) {
+    assert.strictEqual(game.chooserId, tc.chooser);
+    assert.strictEqual(game.chooseSubgame(tc.chooser, tc.subgame).ok, true);
+    await playFullTrickRound(game);
+    assert.strictEqual(game.phase, 'round_summary');
+    const roundSum = Object.values(game.lastRoundSummary.deltas).reduce((a, b) => a + b, 0);
+    assert.strictEqual(
+      roundSum,
+      tc.expectedSum,
+      `Suma punctelor la ${tc.subgame} in 4 jucatori trebuie sa fie ${tc.expectedSum}, dar a fost ${roundSum}`
+    );
+    players.forEach((p) => game.acknowledgeRoundSummary(p.id));
   }
 
-  assert.strictEqual(game.phase, 'round_summary');
-  const sumWhist = Object.values(game.scores).reduce((a, b) => a + b, 0);
-  assert.strictEqual(sumWhist, 160, 'Suma punctelor la Whist (8 levate * 20) trebuie sa fie 160');
-
-  // Trecem la runda 2 -> chooser devine p2, testam sub-jocul RENTZ complet!
-  players.forEach((p) => game.acknowledgeRoundSummary(p.id));
-  assert.strictEqual(game.roundNumber, 2);
-  assert.strictEqual(game.chooserId, 'p2');
-  assert.strictEqual(game.chooseSubgame('p2', 'rentz').ok, true);
+  console.log('4. Verificare sub-joc Rentz (400 / 200 / 100 / 0 = +700)...');
+  assert.strictEqual(game.chooserId, 'p1');
+  assert.strictEqual(game.chooseSubgame('p1', 'rentz').ok, true);
   assert.strictEqual(game.phase, 'playing_rentz');
 
-  console.log('4. Verificare sub-joc Rentz (etalare, As = extra mutare, capat mic = sare jucator, Pas)...');
   let safetyCounter = 0;
   while (game.phase === 'playing_rentz' && safetyCounter < 500) {
     safetyCounter++;
     const turnId = game.currentTurnPlayerId;
     const valid = game.getPlayableRentzCards(turnId);
     if (valid.length > 0) {
-      // Verificam ca NU are voie sa spuna Pas daca are carte valida
       assert.strictEqual(game.passRentzTurn(turnId).ok, false);
       assert.strictEqual(game.playCard(turnId, valid[0]).ok, true);
     } else {
@@ -94,9 +107,9 @@ async function runTests() {
     }
   }
 
-  assert.strictEqual(game.phase, 'round_summary', 'Sub-jocul Rentz trebuie sa se finalizeze curat');
-  const rentzDeltaSum = Object.values(game.lastRoundSummary.deltas).reduce((a, b) => a + b, 0);
-  assert.strictEqual(rentzDeltaSum, 600, 'In 4 jucatori la Rentz suma este 300+200+100+0 = 600');
+  assert.strictEqual(game.phase, 'round_summary');
+  const rentzDeltas = Object.values(game.lastRoundSummary.deltas).sort((a, b) => b - a);
+  assert.deepStrictEqual(rentzDeltas, [400, 200, 100, 0], 'Punctajul la Rentz trebuie sa fie 400, 200, 100, 0');
 
   game.destroy();
 

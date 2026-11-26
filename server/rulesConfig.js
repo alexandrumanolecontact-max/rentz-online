@@ -1,6 +1,5 @@
 /**
- * Configurația regulilor de bază pentru Rentz.
- * Toate punctajele și regulile sunt centralizate aici pentru a putea fi modificate ușor ulterior.
+ * Configurația regulilor și punctajelor pentru Rentz Online.
  */
 
 const MIN_PLAYERS = 3;
@@ -20,7 +19,7 @@ const SUIT_SYMBOLS = {
 const SUIT_NAMES_RO = {
   spades: 'Pică',
   hearts: 'Cupă',
-  diamonds: 'Caro',
+  diamonds: 'Romb',
   clubs: 'Treflă',
 };
 
@@ -40,19 +39,23 @@ const RANK_LABELS = {
 };
 
 const SCORING = {
-  KING_OF_HEARTS: -100,
-  QUEEN: -25,
-  DIAMOND: -20,
-  TRICK_NEGATIVE: -20,
-  TEN_OF_CLUBS: 100,
-  WHIST_TRICK: 20,
+  // Jocuri negative
+  KING_OF_HEARTS: -200,
+  QUEEN_MINUS: -30,
+  DIAMOND_MINUS: -20,
+  NO_TRICKS: -50,
 
-  /**
-   * Punctajul în sub-jocul Rentz în funcție de ordinea terminării cărților (0 = locul 1).
-   * Ex. în 4 jucători: Locul 1 = +300, Locul 2 = +200, Locul 3 = +100, Locul 4 = 0.
-   */
-  getRentzPlacePoints(placeIndex, numPlayers) {
-    return Math.max(0, (numPlayers - 1 - placeIndex) * 100);
+  // Jocuri pozitive
+  TEN_OF_CLUBS: 200,
+  QUEEN_PLUS: 30,
+  DIAMOND_PLUS: 20,
+  WHIST_TRICK: 50,
+
+  // Punctaj fix pe podium la Rentz: Locul 1 = 400, Locul 2 = 200, Locul 3 = 100, restul = 0
+  RENTZ_PLACE_POINTS: [400, 200, 100],
+
+  getRentzPlacePoints(placeIndex) {
+    return this.RENTZ_PLACE_POINTS[placeIndex] || 0;
   },
 };
 
@@ -63,7 +66,7 @@ const RENTZ_RULES = {
   minCardSkipsNext: true,
 
   /**
-   * Cea mai mică valoare din pachet pentru N jucători (astfel încât să fie exact 8 * N cărți):
+   * Cea mai mică valoare din pachet pentru N jucători (exact 8 * N cărți):
    * 3 jucători -> 9..A (24 cărți)
    * 4 jucători -> 7..A (32 cărți)
    * 5 jucători -> 5..A (40 cărți)
@@ -88,12 +91,13 @@ const RENTZ_RULES = {
 const SUBGAMES = [
   {
     id: 'king_of_hearts',
-    name: 'Popa de Roșu',
+    name: 'Popa de Inimă Roșie',
     badge: 'K♥',
     type: 'negative',
     mode: 'tricks',
-    shortDesc: '-100 pct pentru K♥',
-    description: 'Evită levata care conține Regele de Cupă (K♥). Runda se încheie imediat ce K♥ este luat.',
+    shortDesc: '-200 pct pentru K♥',
+    description:
+      'Dacă un jucător ia Popa de Inimă Roșie (K♥), i se scad 200 de puncte. Runda se încheie imediat ce K♥ este luat.',
   },
   {
     id: 'queens',
@@ -101,35 +105,36 @@ const SUBGAMES = [
     badge: 'Q',
     type: 'negative',
     mode: 'tricks',
-    shortDesc: '-25 pct / Damă',
-    description: 'Evită luarea Damelor (Q). Fiecare Damă luată scade 25 de puncte.',
+    shortDesc: '-30 pct / Damă',
+    description: 'Sunt 4 Dame în joc. Pentru fiecare Damă luată se scad 30 de puncte.',
   },
   {
     id: 'diamonds',
-    name: 'Carouri',
+    name: 'Romburi',
     badge: '♦',
     type: 'negative',
     mode: 'tricks',
-    shortDesc: '-20 pct / Carou',
-    description: 'Evită cărțile de Caro (♦). Fiecare Carou luat scade 20 de puncte.',
+    shortDesc: '-20 pct / Romb',
+    description: 'Pentru fiecare Romb (♦) luat se scad 20 de puncte.',
   },
   {
-    id: 'tricks',
-    name: 'Levate',
+    id: 'no_tricks',
+    name: 'No Tricks',
     badge: '−M',
     type: 'negative',
     mode: 'tricks',
-    shortDesc: '-20 pct / Levată',
-    description: 'Evită câștigarea levatelor (mâinilor). Fiecare levată luată scade 20 de puncte.',
+    shortDesc: '-50 pct / Mână',
+    description: 'Pentru fiecare mână (levată) luată se scad 50 de puncte.',
   },
   {
-    id: 'totals',
-    name: 'Totale',
+    id: 'totals_minus',
+    name: 'Totale Minus',
     badge: '∑−',
     type: 'negative',
     mode: 'tricks',
-    shortDesc: 'K♥ + Dame + ♦ + Levate',
-    description: 'Cumulează toate penalizările negative: K♥ (-100), Dame (-25), Carouri (-20) și Levate (-20).',
+    shortDesc: 'K♥ -200 · Q -30 · ♦ -20 · Mână -50',
+    description:
+      'Cumulează penalizările: Popa de Inimă Roșie (-200), Dame (-30/buc), Romburi (-20/buc) și Mâini luate (-50/mână).',
   },
   {
     id: 'ten_of_clubs',
@@ -137,8 +142,9 @@ const SUBGAMES = [
     badge: '10♣',
     type: 'positive',
     mode: 'tricks',
-    shortDesc: '+100 pct pentru 10♣',
-    description: 'Câștigă levata care conține 10 de Treflă (10♣) pentru +100 de puncte.',
+    shortDesc: '+200 pct pentru 10♣',
+    description:
+      'Cine ia 10-le de Treflă (10♣) primește +200 de puncte. Runda se încheie imediat ce 10♣ este luat.',
   },
   {
     id: 'whist',
@@ -146,8 +152,18 @@ const SUBGAMES = [
     badge: '+M',
     type: 'positive',
     mode: 'tricks',
-    shortDesc: '+20 pct / Levată',
-    description: 'Câștigă cât mai multe levate. Fiecare levată câștigată aduce +20 de puncte.',
+    shortDesc: '+50 pct / Mână',
+    description: 'Pentru fiecare mână (levată) luată se adaugă 50 de puncte.',
+  },
+  {
+    id: 'totals_plus',
+    name: 'Totale Plus',
+    badge: '∑+',
+    type: 'positive',
+    mode: 'tricks',
+    shortDesc: '10♣ +200 · Q +30 · ♦ +20 · Mână +50',
+    description:
+      'Cumulează pe plus: 10 de Treflă (+200), Dame (+30/buc), Romburi (+20/buc) și Whist (+50/mână luată).',
   },
   {
     id: 'rentz',
@@ -155,8 +171,9 @@ const SUBGAMES = [
     badge: '★',
     type: 'positive',
     mode: 'rentz',
-    shortDesc: 'Etalare pe culori',
-    description: 'Depune cărțile în ordine de la cartea de mijloc în sus și în jos. Asul oferă încă o mutare, iar cartea minimă blochează următorul jucător.',
+    shortDesc: 'Loc 1: 400 · Loc 2: 200 · Loc 3: 100',
+    description:
+      'Etalare pe culori de la cartea de mijloc. Locul 1: +400 pct, Locul 2: +200 pct, Locul 3: +100 pct.',
   },
 ];
 
