@@ -276,7 +276,35 @@ async function runTests() {
   TIMERS.AFK_THIRD_STRIKE_MS = 10000;
   TIMERS.BOT_ACTION_DELAY_MS = 400;
 
-  console.log('7. Verificare server Express + Socket.IO si fisiere frontend...');
+  console.log('7. Verificare timer comun 30s (+3s) pentru alegerea Pe Vazute / Nevazute + sub-joc -> fallback Nevazute (x2) + joc random...');
+  TIMERS.TURN_VISIBLE_MS = 80;
+  TIMERS.TURN_GRACE_MS = 30;
+  const selGame = new RentzGame(players);
+  assert.strictEqual(selGame.phase, 'deciding_blind');
+  const startRem = selGame.getStateForPlayer('p1').turnRemainingMs;
+  assert(typeof startRem === 'number' && startRem > 0, 'Timerul de selectie trebuie sa fie pornit inca de la deciding_blind');
+
+  // Chiar daca p1 da click pe "Pe Vazute" dupa 40ms, timerul NU se reseteaza (continua aceleasi secunde),
+  // iar daca nu alege si sub-jocul pana la expirare (80+30=110ms), intra fortat pe NEVAZUTE (x2) + sub-joc random!
+  await new Promise((r) => setTimeout(r, 40));
+  selGame.chooseBlindMode('p1', false);
+  const afterModeRem = selGame.getStateForPlayer('p1').turnRemainingMs;
+  assert(afterModeRem < 55, 'Timerul NU trebuie resetat intre alegerea Pe Vazute si alegerea sub-jocului!');
+
+  // Asteptam restul timpului (~90ms) fara sa alegem sub-jocul
+  await new Promise((r) => setTimeout(r, 95));
+  assert.strictEqual(selGame.isBlind, true, 'Daca expira timpul de selectie, jocul trebuie fortat pe NEVAZUTE!');
+  assert.strictEqual(selGame.scoreMultiplier, 2, 'Multiplicatorul trebuie sa fie 2 (la dublu)!');
+  assert(selGame.currentSubgame !== null, 'Un sub-joc random din cele disponibile trebuie sa fi fost ales!');
+  assert(
+    selGame.phase === 'playing_tricks' || selGame.phase === 'playing_rentz',
+    'Runda trebuie sa fi inceput automat!'
+  );
+  selGame.destroy();
+  TIMERS.TURN_VISIBLE_MS = 30000;
+  TIMERS.TURN_GRACE_MS = 3000;
+
+  console.log('8. Verificare server Express + Socket.IO si fisiere frontend...');
   const { server, io } = require('../server/index');
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;

@@ -329,11 +329,10 @@ function updateLiveTurnTimerDOM() {
   const snap = getTurnTimerSnapshot();
   if (!snap) return;
 
-  const pill = document.getElementById('active-turn-timer-pill');
-  if (pill) {
+  document.querySelectorAll('.js-turn-timer-pill').forEach((pill) => {
     pill.textContent = snap.label;
-    pill.className = `turn-timer-pill${snap.tone ? ` ${snap.tone}` : ''}`;
-  }
+    pill.className = `turn-timer-pill js-turn-timer-pill${snap.tone ? ` ${snap.tone}` : ''}`;
+  });
 
   const fill = document.getElementById('active-turn-progress-fill');
   if (fill) {
@@ -771,7 +770,7 @@ function renderGame(room) {
     seatEl.className = `opponent-seat${isTurn ? ' active-turn' : ''}`;
     const timerBadgeHtml =
       isTurn && timerSnap
-        ? `<span id="active-turn-timer-pill" class="turn-timer-pill${
+        ? `<span class="turn-timer-pill js-turn-timer-pill${
             timerSnap.tone ? ` ${timerSnap.tone}` : ''
           }">${escapeHtml(timerSnap.label)}</span>`
         : '';
@@ -813,7 +812,7 @@ function renderGame(room) {
     const myScoreClass = me.score > 0 ? 'pos' : me.score < 0 ? 'neg' : '';
     const myTimerHtml =
       myTurn && timerSnap
-        ? `<span id="active-turn-timer-pill" class="turn-timer-pill${
+        ? `<span class="turn-timer-pill js-turn-timer-pill${
             timerSnap.tone ? ` ${timerSnap.tone}` : ''
           }">${escapeHtml(timerSnap.label)}</span>`
         : '';
@@ -870,6 +869,12 @@ function scaleSubgameDesc(shortDesc, multiplier) {
 
 function renderTableCenter(g, me) {
   const myId = state.user?.id;
+  const timerSnap = getTurnTimerSnapshot();
+  const centerTimerHtml = timerSnap
+    ? ` <span class="turn-timer-pill js-turn-timer-pill${
+        timerSnap.tone ? ` ${timerSnap.tone}` : ''
+      }">${escapeHtml(timerSnap.label)}</span>`
+    : '';
   tableCenter.innerHTML = '';
 
   if (g.phase === 'deciding_blind') {
@@ -882,7 +887,7 @@ function renderTableCenter(g, me) {
         .join('');
 
       box.innerHTML = `
-        <div class="picker-title">Este rândul tău să alegi! Cum vrei să joci runda?</div>
+        <div class="picker-title">Este rândul tău să alegi modul și jocul!${centerTimerHtml}</div>
         <p class="subgame-desc">Jocurile tale rămase disponibile:</p>
         <div class="avail-chips" style="margin-bottom: 12px">${remainingChips}</div>
         <div class="blind-mode-grid">
@@ -931,8 +936,8 @@ function renderTableCenter(g, me) {
       const box = document.createElement('div');
       box.className = 'subgame-picker';
       const pickerHeading = g.isBlind
-        ? '🔥 PE NEVĂZUTE (Punctaj Dublu ×2) — Alege sub-jocul înainte să îți vezi cărțile:'
-        : 'Privește-ți cărțile de jos și alege sub-jocul rundei (×1):';
+        ? `🔥 PE NEVĂZUTE (Punctaj Dublu ×2) — Alege sub-jocul:${centerTimerHtml}`
+        : `Privește-ți cărțile de jos și alege sub-jocul rundei (×1):${centerTimerHtml}`;
       box.innerHTML = `<div class="picker-title">${pickerHeading}</div>`;
       const grid = document.createElement('div');
       grid.className = 'subgame-grid';

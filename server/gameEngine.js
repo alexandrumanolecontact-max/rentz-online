@@ -139,7 +139,11 @@ class RentzGame {
       }
     }
 
-    if (this.currentTurnPlayerId === playerId) {
+    if (
+      this.currentTurnPlayerId === playerId ||
+      ((this.phase === 'deciding_blind' || this.phase === 'choosing_subgame') &&
+        this.chooserId === playerId)
+    ) {
       this.clearTurnTimer();
     }
     this.scheduleBotActionIfNeeded();
@@ -171,6 +175,7 @@ class RentzGame {
       this.chooserId === playerId
     ) {
       this.clearBotTimer();
+      this.armSelectionTimer();
     } else {
       // Dacă masa era în pauză fiindcă toți erau AFK, repornim fluxul pentru cine e la rând
       this.scheduleBotActionIfNeeded();
@@ -228,6 +233,68 @@ class RentzGame {
           this.onStateChange();
         }
       }, TIMERS.BOT_ACTION_DELAY_MS);
+    }
+  }
+
+  armSelectionTimer() {
+    this.clearTurnTimer();
+    this.clearBotTimer();
+    if (
+      (this.phase !== 'deciding_blind' && this.phase !== 'choosing_subgame') ||
+      !this.chooserId
+    ) {
+      return;
+    }
+
+    if (this.isSeatAutomated(this.chooserId)) {
+      this.scheduleBotActionIfNeeded();
+      return;
+    }
+
+    const meta = this.seatMeta[this.chooserId] || { consecutiveTimeouts: 0 };
+    const isThirdStrike = meta.consecutiveTimeouts >= 2;
+
+    this.turnStartedAt = Date.now();
+    this.turnIsAfkWarning = isThirdStrike;
+    const totalTimeoutMs = isThirdStrike
+      ? TIMERS.AFK_THIRD_STRIKE_MS
+      : TIMERS.TURN_VISIBLE_MS + TIMERS.TURN_GRACE_MS;
+
+    this.turnTimer = setTimeout(() => {
+      this.turnTimer = null;
+      this.handleSelectionTimeout();
+    }, totalTimeoutMs);
+  }
+
+  handleSelectionTimeout() {
+    if (this.phase !== 'deciding_blind' && this.phase !== 'choosing_subgame') {
+      return;
+    }
+
+    const chooserId = this.chooserId;
+    const chooser = this.getPlayerById(chooserId);
+    const meta = this.seatMeta[chooserId];
+    if (!meta) return;
+
+    meta.consecutiveTimeouts += 1;
+    if (meta.consecutiveTimeouts >= 3) {
+      meta.isAfk = true;
+    }
+
+    // Dacă nu a reușit să finalizeze ambele alegeri în timp util, se forțează PE NEVĂZUTE (la dublu ×2) și un joc random!
+    this.isBlind = true;
+    this.scoreMultiplier = 2;
+    this.phase = 'choosing_subgame';
+
+    const avail = this.availableSubgames[chooserId] || [];
+    if (avail.length === 0) return;
+    const randomSubId = avail[crypto.randomInt(0, avail.length)];
+
+    const res = this.chooseSubgame(chooserId, randomSubId, { automated: true });
+    if (res.ok) {
+      const afkNote = meta.isAfk ? ' (intrat în AFK)' : '';
+      this.statusBanner = `⏱️ Timpul de alegere a expirat${afkNote} — ${chooser.nickname} joacă automat PE NEVĂZUTE (×2): ${this.currentSubgame.name}!`;
+      this.onStateChange();
     }
   }
 
@@ -388,7 +455,7 @@ class RentzGame {
 
     this.phase = 'deciding_blind';
     this.statusBanner = `${chooser.nickname} alege modul rundei: Pe Văzute (×1) sau Pe Nevăzute (×2)...`;
-    this.scheduleBotActionIfNeeded();
+    this.armSelectionTimer();
   }
 
   chooseBlindMode(playerId, blind, { automated = false } = {}) {
@@ -400,9 +467,6 @@ class RentzGame {
     }
     if (!automated && this.seatMeta[playerId]?.isAfk) {
       return { ok: false, error: 'Apasă mai întâi pe „Reia Jocul” pentru a ieși din AFK.' };
-    }
-    if (!automated) {
-      this.recordManualAction(playerId);
     }
 
     const chooser = this.getPlayerById(playerId);
@@ -417,7 +481,10 @@ class RentzGame {
       this.statusBanner = `${chooser.nickname} joacă Pe Văzute (×1) — își privește cărțile și alege sub-jocul...`;
     }
 
-    this.scheduleBotActionIfNeeded();
+    // IMPORTANT: Pentru un jucător uman NU resetăm timerul — aceleași 30 (+3) secunde continuă pentru alegerea sub-jocului!
+    if (automated || this.isSeatAutomated(playerId)) {
+      this.scheduleBotActionIfNeeded();
+    }
     return { ok: true };
   }
 
@@ -993,7 +1060,10 @@ class RentzGame {
 
     const viewerHand = this.hands[viewerId] || [];
     const hasActiveTurnTimer =
-      (this.phase === 'playing_tricks' || this.phase === 'playing_rentz') &&
+      (this.phase === 'deciding_blind' ||
+        this.phase === 'choosing_subgame' ||
+        this.phase === 'playing_tricks' ||
+        this.phase === 'playing_rentz') &&
       Boolean(this.currentTurnPlayerId) &&
       Boolean(this.turnStartedAt);
 
