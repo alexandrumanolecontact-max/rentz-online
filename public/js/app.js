@@ -1043,7 +1043,9 @@ function renderTableCenter(g, me) {
       const box = document.createElement('div');
       box.className = 'waiting-chooser-box';
       box.innerHTML = `
-        <h3>${escapeHtml(decidingPlayer?.nickname || 'Un jucător')} are 4+ capete!${centerTimerHtml}</h3>
+        <h3>${escapeHtml(decidingPlayer?.nickname || 'Un jucător')} are ${
+        g.minCapeteForRefusal || 4
+      }+ capete!${centerTimerHtml}</h3>
         <p class="subgame-desc">Decide dacă joacă cu cărțile din mână sau cere reîmpărțirea cărților...</p>
       `;
       tableCenter.appendChild(box);

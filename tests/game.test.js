@@ -378,24 +378,60 @@ async function runTests() {
   TIMERS.TURN_VISIBLE_MS = 30000;
   TIMERS.TURN_GRACE_MS = 3000;
 
-  console.log('8. Verificare regula 4+ capete la Rentz (Cazul 1: Pe Nevazute reshuffle ramane Rentz x2; Cazul 2: Pe Vazute reshuffle + schimbare joc)...');
+  console.log('8. Verificare regula capete la Rentz (5+ capete in 3 jucatori, 4+ capete in 4-6 jucatori; Cazul 1 & Cazul 2)...');
   const threePlayers = [
     { id: 'a1', nickname: 'Alex' },
     { id: 'a2', nickname: 'Bogdan' },
     { id: 'a3', nickname: 'Cristi' },
   ];
-  const capGame = new RentzGame(threePlayers);
-  assert.strictEqual(capGame.minRank, 9, 'In 3 jucatori cartea minima este 9');
 
-  // --- CAZUL 1: Pe Nevazute (x2) ---
-  capGame.chooseBlindMode('a1', true);
-  // Fortam 4 capete (doi Asi + doi de 9) in mana lui a2 inainte de alegerea Rentz
-  capGame.hands['a2'] = [
+  // Verificam mai intai ca in 3 jucatori cu DOAR 4 capete NU se declanseaza refuzul (trebuie 5+)!
+  const cap3Only4 = new RentzGame(threePlayers);
+  assert.strictEqual(cap3Only4.minCapeteForRefusal, 5);
+  cap3Only4.chooseBlindMode('a1', false);
+  cap3Only4.hands['a2'] = [
     { id: 'spades_14', suit: 'spades', value: 14, label: 'A', symbol: '♠' },
     { id: 'hearts_14', suit: 'hearts', value: 14, label: 'A', symbol: '♥' },
     { id: 'clubs_9', suit: 'clubs', value: 9, label: '9', symbol: '♣' },
     { id: 'diamonds_9', suit: 'diamonds', value: 9, label: '9', symbol: '♦' },
     { id: 'spades_11', suit: 'spades', value: 11, label: 'J', symbol: '♠' },
+    { id: 'hearts_11', suit: 'hearts', value: 11, label: 'J', symbol: '♥' },
+    { id: 'clubs_11', suit: 'clubs', value: 11, label: 'J', symbol: '♣' },
+    { id: 'diamonds_11', suit: 'diamonds', value: 11, label: 'J', symbol: '♦' },
+  ];
+  cap3Only4.hands['a1'] = [
+    { id: 'spades_12', suit: 'spades', value: 12, label: 'Q', symbol: '♠' },
+    { id: 'hearts_12', suit: 'hearts', value: 12, label: 'Q', symbol: '♥' },
+    { id: 'clubs_12', suit: 'clubs', value: 12, label: 'Q', symbol: '♣' },
+    { id: 'diamonds_12', suit: 'diamonds', value: 12, label: 'Q', symbol: '♦' },
+    { id: 'spades_10', suit: 'spades', value: 10, label: '10', symbol: '♠' },
+    { id: 'hearts_10', suit: 'hearts', value: 10, label: '10', symbol: '♥' },
+    { id: 'clubs_14', suit: 'clubs', value: 14, label: 'A', symbol: '♣' },
+    { id: 'spades_9', suit: 'spades', value: 9, label: '9', symbol: '♠' },
+  ];
+  cap3Only4.hands['a3'] = [
+    { id: 'spades_13', suit: 'spades', value: 13, label: 'K', symbol: '♠' },
+    { id: 'hearts_13', suit: 'hearts', value: 13, label: 'K', symbol: '♥' },
+    { id: 'clubs_13', suit: 'clubs', value: 13, label: 'K', symbol: '♣' },
+    { id: 'diamonds_13', suit: 'diamonds', value: 13, label: 'K', symbol: '♦' },
+    { id: 'clubs_10', suit: 'clubs', value: 10, label: '10', symbol: '♣' },
+    { id: 'diamonds_10', suit: 'diamonds', value: 10, label: '10', symbol: '♦' },
+    { id: 'diamonds_14', suit: 'diamonds', value: 14, label: 'A', symbol: '♦' },
+    { id: 'hearts_9', suit: 'hearts', value: 9, label: '9', symbol: '♥' },
+  ];
+  assert.strictEqual(cap3Only4.chooseSubgame('a1', 'rentz').ok, true);
+  assert.strictEqual(cap3Only4.phase, 'playing_rentz', 'In 3 jucatori 4 capete NU trebuie sa declanseze refuzul!');
+  cap3Only4.destroy();
+
+  // --- CAZUL 1 in 3 jucatori cu 5 capete: Pe Nevazute (x2) ---
+  const capGame = new RentzGame(threePlayers);
+  capGame.chooseBlindMode('a1', true);
+  capGame.hands['a2'] = [
+    { id: 'spades_14', suit: 'spades', value: 14, label: 'A', symbol: '♠' },
+    { id: 'hearts_14', suit: 'hearts', value: 14, label: 'A', symbol: '♥' },
+    { id: 'clubs_14', suit: 'clubs', value: 14, label: 'A', symbol: '♣' },
+    { id: 'clubs_9', suit: 'clubs', value: 9, label: '9', symbol: '♣' },
+    { id: 'diamonds_9', suit: 'diamonds', value: 9, label: '9', symbol: '♦' }, // 5 capete!
     { id: 'hearts_11', suit: 'hearts', value: 11, label: 'J', symbol: '♥' },
     { id: 'clubs_11', suit: 'clubs', value: 11, label: 'J', symbol: '♣' },
     { id: 'diamonds_11', suit: 'diamonds', value: 11, label: 'J', symbol: '♦' },
@@ -415,76 +451,63 @@ async function runTests() {
     { id: 'hearts_13', suit: 'hearts', value: 13, label: 'K', symbol: '♥' },
     { id: 'clubs_13', suit: 'clubs', value: 13, label: 'K', symbol: '♣' },
     { id: 'diamonds_13', suit: 'diamonds', value: 13, label: 'K', symbol: '♦' },
-    { id: 'clubs_14', suit: 'clubs', value: 14, label: 'A', symbol: '♣' },
+    { id: 'spades_11', suit: 'spades', value: 11, label: 'J', symbol: '♠' },
     { id: 'diamonds_14', suit: 'diamonds', value: 14, label: 'A', symbol: '♦' },
     { id: 'spades_9', suit: 'spades', value: 9, label: '9', symbol: '♠' },
     { id: 'hearts_9', suit: 'hearts', value: 9, label: '9', symbol: '♥' },
-  ]; // Observatie: si a3 are 4 capete! Deci se testeaza inclusiv cazul cu 2 jucatori avand cate 4 capete!
+  ];
 
   assert.strictEqual(capGame.chooseSubgame('a1', 'rentz').ok, true);
   assert.strictEqual(capGame.phase, 'checking_rentz_refusal');
   assert.strictEqual(capGame.currentTurnPlayerId, 'a2');
 
-  // a2 refuza -> Cazul 1 (Nevazute): ramane tot Rentz x2 si se reimpart cartile!
   assert.strictEqual(capGame.decideRentzRefusal('a2', true).ok, true);
   assert.strictEqual(capGame.isBlind, true);
   assert.strictEqual(capGame.scoreMultiplier, 2);
   assert.strictEqual(capGame.currentSubgame.id, 'rentz');
-  // Daca la noua impartire cineva a nimerit iar 4+ capete, faza este checking_rentz_refusal (exact cum cere regula!), altfel playing_rentz
   while (capGame.phase === 'checking_rentz_refusal') {
     assert.strictEqual(capGame.decideRentzRefusal(capGame.currentTurnPlayerId, false).ok, true);
   }
   assert.strictEqual(capGame.phase, 'playing_rentz');
   capGame.destroy();
 
-  // --- CAZUL 2: Pe Vazute (x1) ---
-  const capGame2 = new RentzGame(threePlayers);
-  capGame2.chooseBlindMode('a1', false);
-  capGame2.hands['a2'] = [
+  // --- CAZUL 2 in 4 jucatori cu 4 capete: Pe Vazute (x1) ---
+  const capGame2 = new RentzGame(players);
+  assert.strictEqual(capGame2.minCapeteForRefusal, 4);
+  capGame2.chooseBlindMode('p1', false);
+  // Fortam 4 capete (doi Asi + doi de 7) in mana lui p2, si restul fara 4 capete
+  capGame2.hands['p2'] = [
     { id: 'spades_14', suit: 'spades', value: 14, label: 'A', symbol: '♠' },
     { id: 'hearts_14', suit: 'hearts', value: 14, label: 'A', symbol: '♥' },
-    { id: 'clubs_9', suit: 'clubs', value: 9, label: '9', symbol: '♣' },
-    { id: 'diamonds_9', suit: 'diamonds', value: 9, label: '9', symbol: '♦' },
+    { id: 'clubs_7', suit: 'clubs', value: 7, label: '7', symbol: '♣' },
+    { id: 'diamonds_7', suit: 'diamonds', value: 7, label: '7', symbol: '♦' }, // 4 capete in 4p!
     { id: 'spades_11', suit: 'spades', value: 11, label: 'J', symbol: '♠' },
     { id: 'hearts_11', suit: 'hearts', value: 11, label: 'J', symbol: '♥' },
     { id: 'clubs_11', suit: 'clubs', value: 11, label: 'J', symbol: '♣' },
     { id: 'diamonds_11', suit: 'diamonds', value: 11, label: 'J', symbol: '♦' },
   ];
-  capGame2.hands['a1'] = [
-    { id: 'spades_12', suit: 'spades', value: 12, label: 'Q', symbol: '♠' },
-    { id: 'hearts_12', suit: 'hearts', value: 12, label: 'Q', symbol: '♥' },
-    { id: 'clubs_12', suit: 'clubs', value: 12, label: 'Q', symbol: '♣' },
-    { id: 'diamonds_12', suit: 'diamonds', value: 12, label: 'Q', symbol: '♦' },
-    { id: 'spades_10', suit: 'spades', value: 10, label: '10', symbol: '♠' },
-    { id: 'hearts_10', suit: 'hearts', value: 10, label: '10', symbol: '♥' },
-    { id: 'clubs_10', suit: 'clubs', value: 10, label: '10', symbol: '♣' },
-    { id: 'diamonds_10', suit: 'diamonds', value: 10, label: '10', symbol: '♦' },
-  ];
-  capGame2.hands['a3'] = [
-    { id: 'spades_13', suit: 'spades', value: 13, label: 'K', symbol: '♠' },
-    { id: 'hearts_13', suit: 'hearts', value: 13, label: 'K', symbol: '♥' },
-    { id: 'clubs_13', suit: 'clubs', value: 13, label: 'K', symbol: '♣' },
-    { id: 'diamonds_13', suit: 'diamonds', value: 13, label: 'K', symbol: '♦' },
-    { id: 'clubs_14', suit: 'clubs', value: 14, label: 'A', symbol: '♣' },
-    { id: 'spades_9', suit: 'spades', value: 9, label: '9', symbol: '♠' },
-    { id: 'hearts_9', suit: 'hearts', value: 9, label: '9', symbol: '♥' },
-    { id: 'diamonds_14', suit: 'diamonds', value: 14, label: 'A', symbol: '♦' },
-  ];
+  capGame2.hands['p1'] = capGame2.hands['p1'].map((c, idx) => ({
+    id: `spades_${8 + (idx % 4)}`,
+    suit: 'spades',
+    value: 9,
+    label: '9',
+    symbol: '♠',
+  }));
+  capGame2.hands['p3'] = capGame2.hands['p1'];
+  capGame2.hands['p4'] = capGame2.hands['p1'];
 
-  assert.strictEqual(capGame2.chooseSubgame('a1', 'rentz').ok, true);
+  assert.strictEqual(capGame2.chooseSubgame('p1', 'rentz').ok, true);
   assert.strictEqual(capGame2.phase, 'checking_rentz_refusal');
-  // a2 refuza -> Cazul 2 (Pe Vazute): reshuffle + a1 revine la choosing_subgame Pe Vazute (x1), avand inclusiv Rentz disponibil, si poate schimba jocul!
-  assert.strictEqual(capGame2.decideRentzRefusal('a2', true).ok, true);
+  assert.strictEqual(capGame2.decideRentzRefusal('p2', true).ok, true);
   assert.strictEqual(capGame2.phase, 'choosing_subgame');
   assert.strictEqual(capGame2.isBlind, false);
   assert.strictEqual(capGame2.scoreMultiplier, 1);
   assert.strictEqual(capGame2.cardsRevealed, true);
   assert(
-    capGame2.availableSubgames['a1'].includes('rentz'),
-    'Rentz trebuie sa redevina disponibil ca a1 sa poata alege tot Rentz sau alt joc!'
+    capGame2.availableSubgames['p1'].includes('rentz'),
+    'Rentz trebuie sa redevina disponibil ca p1 sa poata alege tot Rentz sau alt joc!'
   );
-  // a1 decide acum sa schimbe jocul in Whist!
-  assert.strictEqual(capGame2.chooseSubgame('a1', 'whist').ok, true);
+  assert.strictEqual(capGame2.chooseSubgame('p1', 'whist').ok, true);
   assert.strictEqual(capGame2.phase, 'playing_tricks');
   capGame2.destroy();
 

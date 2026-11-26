@@ -86,6 +86,15 @@ const RENTZ_RULES = {
   getCenterRank(numPlayers) {
     return 15 - numPlayers;
   },
+
+  /**
+   * Numărul minim de capete în mână necesar pentru a putea refuza runda de Rentz:
+   * - 3 jucători: 5+ capete
+   * - 4–6 jucători: 4+ capete
+   */
+  getMinCapeteForRefusal(numPlayers) {
+    return numPlayers === 3 ? 5 : 4;
+  },
 };
 
 const SUBGAMES = [

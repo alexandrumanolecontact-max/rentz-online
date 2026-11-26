@@ -26,6 +26,7 @@ class RentzGame {
 
     this.minRank = RENTZ_RULES.getMinRank(this.numPlayers);
     this.centerRank = RENTZ_RULES.getCenterRank(this.numPlayers);
+    this.minCapeteForRefusal = RENTZ_RULES.getMinCapeteForRefusal(this.numPlayers);
     this.totalRounds = this.numPlayers * SUBGAMES.length;
     this.roundNumber = 0;
 
@@ -579,7 +580,7 @@ class RentzGame {
     const candidates = [];
     for (let step = 0; step < this.numPlayers; step++) {
       const p = this.players[(startIdx + step) % this.numPlayers];
-      if (this.countCapete(this.hands[p.id] || []) >= 4) {
+      if (this.countCapete(this.hands[p.id] || []) >= this.minCapeteForRefusal) {
         candidates.push(p.id);
       }
     }
@@ -700,19 +701,21 @@ class RentzGame {
     this.redealFreshHands();
     this.cardsRevealed = true;
 
-    // CAZUL 1: Se juca PE NEVĂZUTE (×2) -> rămâne tot Rentz Pe Nevăzute, doar reshuffle (cu verificare din nou pt 4+ capete!)
+    const capLabel = `${this.minCapeteForRefusal}+ capete`;
+
+    // CAZUL 1: Se juca PE NEVĂZUTE (×2) -> rămâne tot Rentz Pe Nevăzute, doar reshuffle (cu verificare din nou pt pragul de capete!)
     if (this.isBlind) {
       const nextCandidates = this.getOrderedCapeteCandidates();
       if (nextCandidates.length > 0) {
         this.rentzRefusalCandidates = nextCandidates;
         this.enterRentzRefusalPhase(
-          `🔄 ${player.nickname} a cerut reshuffle (4+ capete)! Cărți noi împărțite — `
+          `🔄 ${player.nickname} a cerut reshuffle (${capLabel})! Cărți noi împărțite — `
         );
         return { ok: true };
       }
 
       this.startRentzPlayPhase(
-        `🔄 ${player.nickname} a cerut reshuffle (4+ capete)! Cărți noi — se joacă tot Rentz PE NEVĂZUTE (×2), deschidere cu ${centerLabel}!`
+        `🔄 ${player.nickname} a cerut reshuffle (${capLabel})! Cărți noi — se joacă tot Rentz PE NEVĂZUTE (×2), deschidere cu ${centerLabel}!`
       );
       return { ok: true };
     }
@@ -726,7 +729,7 @@ class RentzGame {
     this.scoreMultiplier = 1;
     this.phase = 'choosing_subgame';
     this.currentTurnPlayerId = this.chooserId;
-    this.statusBanner = `🔄 ${player.nickname} a refuzat Rentz (4+ capete)! Cărțile au fost reîmpărțite — ${chooser.nickname} poate alege din nou jocul (Pe Văzute ×1).`;
+    this.statusBanner = `🔄 ${player.nickname} a refuzat Rentz (${capLabel})! Cărțile au fost reîmpărțite — ${chooser.nickname} poate alege din nou jocul (Pe Văzute ×1).`;
     this.armSelectionTimer();
     return { ok: true };
   }
@@ -1283,6 +1286,7 @@ class RentzGame {
       minRankLabel: RANK_LABELS[this.minRank],
       centerRank: this.centerRank,
       centerRankLabel: RANK_LABELS[this.centerRank],
+      minCapeteForRefusal: this.minCapeteForRefusal,
       suitsOrder: SUITS,
       myHand: this.cardsRevealed ? viewerHand : [],
       myCapeteCount: this.cardsRevealed ? this.countCapete(viewerHand) : 0,
