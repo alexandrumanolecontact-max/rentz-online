@@ -3,6 +3,9 @@ const { createClient } = require('@supabase/supabase-js');
 const SUPABASE_URL = (process.env.SUPABASE_URL || '').trim();
 const SUPABASE_ANON_KEY = (process.env.SUPABASE_ANON_KEY || '').trim();
 
+const NICKNAME_COOLDOWN_DAYS = 5;
+const NICKNAME_COOLDOWN_MS = NICKNAME_COOLDOWN_DAYS * 24 * 60 * 60 * 1000;
+
 function isAuthConfigured() {
   return (
     SUPABASE_URL.startsWith('http') &&
@@ -38,8 +41,31 @@ function createAuthenticatedClient(accessToken) {
   });
 }
 
+function formatRemainingCooldown(nextIso) {
+  const diffMs = Math.max(0, new Date(nextIso).getTime() - Date.now());
+  const totalHours = Math.ceil(diffMs / (60 * 60 * 1000));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  if (days > 0 && hours > 0) {
+    return `${days} ${days === 1 ? 'zi' : 'zile'} și ${hours} ${hours === 1 ? 'oră' : 'ore'}`;
+  }
+  if (days > 0) {
+    return `${days} ${days === 1 ? 'zi' : 'zile'}`;
+  }
+  return `${ Math.max(1, hours) } ${hours === 1 ? 'oră' : 'ore'}`;
+}
+
+function computeNextChangeIso(changedAtIso) {
+  if (!changedAtIso) return null;
+  const nextMs = new Date(changedAtIso).getTime() + NICKNAME_COOLDOWN_MS;
+  return nextMs > Date.now() ? new Date(nextMs).toISOString() : null;
+}
+
 function translateAuthError(message = '') {
   const m = message.toLowerCase();
+  if (m.includes('nickname_cooldown_active')) {
+    return `Poți schimba nickname-ul doar o dată la ${NICKNAME_COOLDOWN_DAYS} zile.`;
+  }
   if (m.includes('invalid login credentials')) {
     return 'Username cont / email sau parolă incorectă.';
   }
@@ -115,18 +141,14 @@ function validateEmail(raw) {
   return { ok: true, email };
 }
 
-async function fetchUserProfile(client, user) {
-  const { data: profile } = await client
-    .from('profiles')
-    .select('username, display_name')
-    .eq('id', user.id)
-    .maybeSingle();
-
+function buildUserPayload(user, profile) {
   const accountUsername =
     profile?.username ||
     user.user_metadata?.username ||
     (user.email ? user.email.split('@')[0] : 'cont');
   const displayName = profile?.display_name || null;
+  const displayNameChangedAt = profile?.display_name_changed_at || null;
+  const nextDisplayNameChangeAt = computeNextChangeIso(displayNameChangedAt);
 
   return {
     id: user.id,
@@ -134,7 +156,20 @@ async function fetchUserProfile(client, user) {
     accountUsername,
     displayName,
     needsDisplayName: !displayName,
+    displayNameChangedAt,
+    nextDisplayNameChangeAt,
+    cooldownDays: NICKNAME_COOLDOWN_DAYS,
   };
+}
+
+async function fetchUserProfile(client, user) {
+  const { data: profile } = await client
+    .from('profiles')
+    .select('username, display_name, display_name_changed_at')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  return buildUserPayload(user, profile);
 }
 
 async function registerAccount({ username: rawUsername, email: rawEmail, password, redirectTo }) {
@@ -153,7 +188,6 @@ async function registerAccount({ username: rawUsername, email: rawEmail, passwor
     return { ok: false, error: 'Parola trebuie să aibă cel puțin 6 caractere.' };
   }
 
-  // Verificăm dacă username-ul de cont este deja ocupat
   const { data: existingProfile, error: profileErr } = await client
     .from('profiles')
     .select('id')
@@ -246,17 +280,32 @@ async function setDisplayName({ accessToken, displayName: rawDisplayName }) {
   const dCheck = validateDisplayName(rawDisplayName);
   if (!dCheck.ok) return dCheck;
 
+  const currentUser = verified.user;
+
+  if (currentUser.displayName && currentUser.displayName === dCheck.displayName) {
+    return { ok: false, error: 'Noul nickname este identic cu cel actual.' };
+  }
+
+  // Dacă are deja un nickname setat, verificăm restricția de 5 zile
+  if (currentUser.displayName && currentUser.nextDisplayNameChangeAt) {
+    const remaining = formatRemainingCooldown(currentUser.nextDisplayNameChangeAt);
+    return {
+      ok: false,
+      error: `Poți schimba nickname-ul doar o dată la ${NICKNAME_COOLDOWN_DAYS} zile. Mai ai de așteptat ${remaining}.`,
+      nextDisplayNameChangeAt: currentUser.nextDisplayNameChangeAt,
+    };
+  }
+
   const authedClient = createAuthenticatedClient(accessToken);
   if (!authedClient) {
     return { ok: false, error: 'Autentificare neconfigurată.' };
   }
 
-  // Verificăm dacă alt jucător are deja acest nume de joc
   const { data: taken, error: checkErr } = await authedClient
     .from('profiles')
     .select('id')
     .eq('display_name_lower', dCheck.displayName.toLowerCase())
-    .neq('id', verified.user.id)
+    .neq('id', currentUser.id)
     .maybeSingle();
 
   if (checkErr) {
@@ -272,8 +321,8 @@ async function setDisplayName({ accessToken, displayName: rawDisplayName }) {
   const { data: updated, error: updateErr } = await authedClient
     .from('profiles')
     .update({ display_name: dCheck.displayName })
-    .eq('id', verified.user.id)
-    .select('username, display_name')
+    .eq('id', currentUser.id)
+    .select('username, display_name, display_name_changed_at')
     .single();
 
   if (updateErr || !updated) {
@@ -282,13 +331,10 @@ async function setDisplayName({ accessToken, displayName: rawDisplayName }) {
 
   return {
     ok: true,
-    user: {
-      id: verified.user.id,
-      email: verified.user.email,
-      accountUsername: updated.username,
-      displayName: updated.display_name,
-      needsDisplayName: false,
-    },
+    user: buildUserPayload(
+      { id: currentUser.id, email: currentUser.email },
+      updated
+    ),
   };
 }
 
@@ -363,6 +409,7 @@ async function verifyAccessToken(accessToken) {
 module.exports = {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
+  NICKNAME_COOLDOWN_DAYS,
   isAuthConfigured,
   registerAccount,
   loginAccount,

@@ -90,6 +90,16 @@ const myHandContainer = document.getElementById('my-hand');
 const modalScores = document.getElementById('modal-scores');
 const scoresModalBody = document.getElementById('scores-modal-body');
 const modalRules = document.getElementById('modal-rules');
+const modalAccountSettings = document.getElementById('modal-account-settings');
+const btnOpenAccountSettings = document.getElementById('btn-open-account-settings');
+const settingsAccountUsername = document.getElementById('settings-account-username');
+const settingsAccountEmail = document.getElementById('settings-account-email');
+const settingsCurrentNickname = document.getElementById('settings-current-nickname');
+const settingsCooldownBadge = document.getElementById('settings-cooldown-badge');
+const settingsCooldownHint = document.getElementById('settings-cooldown-hint');
+const formChangeNickname = document.getElementById('form-change-nickname');
+const inputSettingsNickname = document.getElementById('input-settings-nickname');
+const btnSaveSettingsNickname = document.getElementById('btn-save-settings-nickname');
 
 function showToast(message, isError = false) {
   const container = document.getElementById('toast-container');
@@ -1073,10 +1083,104 @@ document.querySelectorAll('[data-close-modal]').forEach((btn) => {
   });
 });
 
-[modalScores, modalRules].forEach((backdrop) => {
+[modalScores, modalRules, modalAccountSettings].forEach((backdrop) => {
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) backdrop.classList.add('hidden');
   });
+});
+
+function formatRemainingTimeRo(nextIso) {
+  const diffMs = Math.max(0, new Date(nextIso).getTime() - Date.now());
+  const totalHours = Math.ceil(diffMs / (60 * 60 * 1000));
+  const days = Math.floor(totalHours / 24);
+  const hours = totalHours % 24;
+  if (days > 0 && hours > 0) {
+    return `${days} ${days === 1 ? 'zi' : 'zile'} și ${hours} ${hours === 1 ? 'oră' : 'ore'}`;
+  }
+  if (days > 0) {
+    return `${days} ${days === 1 ? 'zi' : 'zile'}`;
+  }
+  return `${Math.max(1, hours)} ${hours === 1 ? 'oră' : 'ore'}`;
+}
+
+function renderAccountSettingsModal() {
+  const u = state.user;
+  if (!u) return;
+
+  settingsAccountUsername.textContent = u.accountUsername || '-';
+  settingsAccountEmail.textContent = u.email || '-';
+  settingsCurrentNickname.textContent = u.displayName || '-';
+  inputSettingsNickname.value = '';
+
+  const nextIso = u.nextDisplayNameChangeAt;
+  const isLocked = Boolean(nextIso && new Date(nextIso).getTime() > Date.now());
+
+  if (isLocked) {
+    const remaining = formatRemainingTimeRo(nextIso);
+    const formattedDate = new Date(nextIso).toLocaleString('ro-RO', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    settingsCooldownBadge.textContent = `Blocat (${remaining})`;
+    settingsCooldownBadge.className = 'cooldown-badge locked';
+    settingsCooldownHint.textContent = `Ai schimbat recent nickname-ul. Îl vei putea modifica din nou peste ${remaining} (pe ${formattedDate}).`;
+    inputSettingsNickname.disabled = true;
+    btnSaveSettingsNickname.disabled = true;
+  } else {
+    const days = u.cooldownDays || 5;
+    settingsCooldownBadge.textContent = 'Disponibil acum';
+    settingsCooldownBadge.className = 'cooldown-badge available';
+    settingsCooldownHint.textContent = `Poți schimba nickname-ul acum. După salvare, următoarea modificare va fi disponibilă peste ${days} zile.`;
+    inputSettingsNickname.disabled = false;
+    btnSaveSettingsNickname.disabled = false;
+  }
+}
+
+btnOpenAccountSettings.addEventListener('click', () => {
+  renderAccountSettingsModal();
+  modalAccountSettings.classList.remove('hidden');
+});
+
+formChangeNickname.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const chosen = inputSettingsNickname.value.trim().replace(/\s+/g, ' ');
+  if (chosen.length < 2) {
+    showToast('Noul nickname trebuie să aibă cel puțin 2 caractere.', true);
+    return;
+  }
+
+  btnSaveSettingsNickname.disabled = true;
+  try {
+    const resp = await fetch('/api/auth/display-name', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+      body: JSON.stringify({ displayName: chosen }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      if (data.nextDisplayNameChangeAt && state.user) {
+        state.user.nextDisplayNameChangeAt = data.nextDisplayNameChangeAt;
+      }
+      renderAccountSettingsModal();
+      showToast(data.error || 'Nu s-a putut actualiza nickname-ul.', true);
+      return;
+    }
+
+    state.user = data.user;
+    syncMenuHeader();
+    renderAccountSettingsModal();
+    emitSessionInit();
+    showToast(`Nickname-ul a fost schimbat în „${data.user.displayName}”!`, false);
+  } catch {
+    showToast('Eroare de conexiune la salvarea nickname-ului.', true);
+    renderAccountSettingsModal();
+  }
 });
 
 initAuth();

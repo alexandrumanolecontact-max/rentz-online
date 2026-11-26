@@ -247,6 +247,9 @@
         <div class="user-pill">
           <span class="user-pill-label">Jucător:</span>
           <strong id="display-nickname">Jucător</strong>
+          <button id="btn-open-account-settings" type="button" class="btn btn-sm btn-outline">
+            ⚙️ Setări Cont
+          </button>
           <button id="btn-logout" type="button" class="btn-link">Deconectare</button>
         </div>
       </header>
@@ -369,6 +372,63 @@
       </footer>
     </div>
   </main>
+
+  <!-- MODAL: Setări Cont -->
+  <div id="modal-account-settings" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-settings">
+      <div class="modal-header">
+        <h3>⚙️ Setări Cont</h3>
+        <button type="button" class="btn-close" data-close-modal="modal-account-settings">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="settings-section">
+          <h4 class="settings-section-title">Detalii Cont</h4>
+          <div class="settings-info-grid">
+            <div class="settings-info-row">
+              <span class="settings-info-label">Username autentificare</span>
+              <strong id="settings-account-username">-</strong>
+            </div>
+            <div class="settings-info-row">
+              <span class="settings-info-label">Email recuperare</span>
+              <strong id="settings-account-email">-</strong>
+            </div>
+            <div class="settings-info-row">
+              <span class="settings-info-label">Nickname actual în joc</span>
+              <strong id="settings-current-nickname" class="gold-text">-</strong>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-title-row">
+            <h4 class="settings-section-title">Schimbare Nickname</h4>
+            <span id="settings-cooldown-badge" class="cooldown-badge available">Disponibil</span>
+          </div>
+          <p id="settings-cooldown-hint" class="settings-hint">
+            Nickname-ul afișat la masă poate fi schimbat o dată la 5 zile.
+          </p>
+
+          <form id="form-change-nickname" class="stack-form" autocomplete="off">
+            <div class="field-group">
+              <label for="input-settings-nickname" class="field-label">Noul Nickname (2–18 caractere)</label>
+              <input
+                id="input-settings-nickname"
+                type="text"
+                class="text-input"
+                placeholder="Introdu noul nume de jucător"
+                minlength="2"
+                maxlength="18"
+                required
+              />
+            </div>
+            <button type="submit" id="btn-save-settings-nickname" class="btn btn-primary">
+              Salvează Noul Nickname
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 
   <!-- MODAL: Tabel Scor & Sub-jocuri Rămase -->
   <div id="modal-scores" class="modal-backdrop hidden" role="dialog" aria-modal="true">

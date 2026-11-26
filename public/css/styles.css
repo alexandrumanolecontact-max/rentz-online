@@ -1250,6 +1250,85 @@ body {
   overflow: hidden;
 }
 
+.modal-card.modal-settings {
+  width: min(520px, 95vw);
+}
+
+.settings-section {
+  background: rgba(8, 20, 15, 0.55);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.settings-section-title {
+  font-size: 1rem;
+  color: var(--gold-bright);
+}
+
+.settings-info-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-info-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.9rem;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.settings-info-row:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.settings-info-label {
+  color: var(--text-muted);
+}
+
+.gold-text {
+  color: var(--gold-bright);
+}
+
+.settings-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.cooldown-badge {
+  font-size: 0.76rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: 999px;
+}
+
+.cooldown-badge.available {
+  background: rgba(38, 184, 119, 0.2);
+  color: #6df0af;
+}
+
+.cooldown-badge.locked {
+  background: rgba(242, 169, 59, 0.2);
+  color: #ffd089;
+}
+
 .modal-header {
   display: flex;
   align-items: center;

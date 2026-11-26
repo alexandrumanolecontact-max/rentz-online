@@ -5,12 +5,14 @@
 -- 1. Tabelul de profiluri
 -- username = ID-ul contului folosit la autentificare (login)
 -- display_name = numele afisat in joc, ales la prima autentificare (initial NULL)
+-- display_name_changed_at = momentul ultimei schimbari ulterioare a nickname-ului (cooldown 5 zile)
 create table if not exists public.profiles (
   id uuid primary key references auth.users(id) on delete cascade,
   username text not null check (char_length(trim(username)) between 3 and 18),
   username_lower text generated always as (lower(trim(username))) stored unique,
   display_name text check (display_name is null or char_length(trim(display_name)) between 2 and 18),
   display_name_lower text generated always as (lower(trim(display_name))) stored unique,
+  display_name_changed_at timestamptz,
   created_at timestamptz not null default now()
 );
 
@@ -42,7 +44,36 @@ create policy "Utilizatorii isi pot actualiza propriul profil"
   using ((select auth.uid()) = id)
   with check ((select auth.uid()) = id);
 
--- 2. Trigger automat la inregistrare: salveaza username-ul de login (display_name ramane NULL pana la primul login)
+-- 2. Trigger pentru limitarea schimbarii nickname-ului la o data la 5 zile
+create or replace function public.enforce_display_name_cooldown()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+begin
+  if old.display_name is not null and new.display_name is distinct from old.display_name then
+    if old.display_name_changed_at is not null
+       and now() < old.display_name_changed_at + interval '5 days' then
+      raise exception 'NICKNAME_COOLDOWN_ACTIVE';
+    end if;
+    new.display_name_changed_at := now();
+  else
+    new.display_name_changed_at := old.display_name_changed_at;
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function public.enforce_display_name_cooldown() from public, anon;
+grant execute on function public.enforce_display_name_cooldown() to authenticated;
+
+drop trigger if exists trg_enforce_display_name_cooldown on public.profiles;
+create trigger trg_enforce_display_name_cooldown
+  before update on public.profiles
+  for each row execute procedure public.enforce_display_name_cooldown();
+
+-- 3. Trigger automat la inregistrare: salveaza username-ul de login (display_name ramane NULL pana la primul login)
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -66,7 +97,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure public.handle_new_user();
 
--- 3. Functie securizata pentru autentificarea dupa Username-ul contului
+-- 4. Functie securizata pentru autentificarea dupa Username-ul contului
 create or replace function public.get_email_for_login(p_username text)
 returns text
 language plpgsql
