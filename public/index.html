@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Rentz Online — Joc de cărți multiplayer</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&family=JetBrains+Mono:wght@600;700&display=swap"
+    rel="stylesheet"
+  />
+  <link rel="stylesheet" href="/css/styles.css" />
+</head>
+<body>
+  <div id="toast-container" aria-live="polite"></div>
+
+  <!-- ECRAN 1: Alegere Nickname (fără cont) -->
+  <main id="screen-nickname" class="screen active">
+    <div class="auth-card">
+      <div class="brand-suits" aria-hidden="true">
+        <span class="suit-black">♠</span>
+        <span class="suit-red">♥</span>
+        <span class="suit-black">♣</span>
+        <span class="suit-red">♦</span>
+      </div>
+      <h1 class="brand-title">RENTZ</h1>
+      <p class="brand-subtitle">Jocul clasic românesc de cărți — direct în browser, fără cont</p>
+
+      <form id="form-nickname" class="stack-form" autocomplete="off">
+        <label for="input-nickname" class="field-label">Alege un nickname</label>
+        <input
+          id="input-nickname"
+          type="text"
+          class="text-input"
+          placeholder="Ex: Andrei"
+          minlength="2"
+          maxlength="18"
+          required
+          autofocus
+        />
+        <button type="submit" class="btn btn-primary btn-lg">Continuă</button>
+      </form>
+    </div>
+  </main>
+
+  <!-- ECRAN 2: Meniu Principal (Create Room / Join Room) -->
+  <main id="screen-menu" class="screen">
+    <div class="menu-wrapper">
+      <header class="menu-header">
+        <div class="brand-mini">
+          <span class="suit-red">♥</span> RENTZ
+        </div>
+        <div class="user-pill">
+          <span class="user-pill-label">Nickname:</span>
+          <strong id="display-nickname">Jucător</strong>
+          <button id="btn-change-nick" type="button" class="btn-link">Schimbă</button>
+        </div>
+      </header>
+
+      <div class="menu-grid">
+        <!-- Opțiunea 1: Create Room -->
+        <section class="action-panel">
+          <div class="panel-icon">✦</div>
+          <h2>Create Room</h2>
+          <p>Creează o cameră nouă (3–6 jucători), intră în lobby și trimite codul de invitație prietenilor.</p>
+          <button id="btn-create-room" type="button" class="btn btn-primary btn-lg">
+            Creează Cameră
+          </button>
+        </section>
+
+        <!-- Opțiunea 2: Join Room -->
+        <section class="action-panel">
+          <div class="panel-icon">⇥</div>
+          <h2>Join Room</h2>
+          <p>Ai primit un cod de invitație? Introdu codul mai jos pentru a intra direct în lobby.</p>
+          <form id="form-join-room" class="join-form" autocomplete="off">
+            <input
+              id="input-room-code"
+              type="text"
+              class="text-input code-input"
+              placeholder="COD INVITAȚIE"
+              maxlength="6"
+              required
+            />
+            <button type="submit" class="btn btn-secondary btn-lg">
+              Intră în Cameră
+            </button>
+          </form>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <!-- ECRAN 3: Lobby Cameră -->
+  <main id="screen-lobby" class="screen">
+    <div class="lobby-container">
+      <header class="lobby-topbar">
+        <button id="btn-leave-lobby" type="button" class="btn btn-ghost">
+          ← Ieși din cameră
+        </button>
+        <div id="lobby-count-badge" class="count-badge">Jucători: 1 / 6 (minim 3)</div>
+      </header>
+
+      <section class="invite-box">
+        <span class="invite-label">COD DE INVITAȚIE CAMERĂ</span>
+        <div class="invite-code-row">
+          <span id="lobby-room-code" class="invite-code">------</span>
+          <button id="btn-copy-code" type="button" class="btn btn-outline">
+            Copiază codul
+          </button>
+        </div>
+        <p class="invite-hint">Trimite acest cod celorlalți jucători ca să intre în lobby.</p>
+      </section>
+
+      <section class="seats-section">
+        <div id="lobby-players-grid" class="lobby-seats-grid"></div>
+      </section>
+
+      <footer class="lobby-footer">
+        <p id="lobby-status-msg" class="lobby-status-msg">
+          Se așteaptă minim 3 jucători pentru a putea da Ready...
+        </p>
+        <button id="btn-toggle-ready" type="button" class="btn btn-ready btn-lg" disabled>
+          Sunt Gata (Ready)
+        </button>
+      </footer>
+    </div>
+  </main>
+
+  <!-- ECRAN 4: Masa de Joc Rentz -->
+  <main id="screen-game" class="screen">
+    <div class="game-layout">
+      <!-- Bara de sus -->
+      <header class="game-hud">
+        <div class="hud-left">
+          <span id="hud-round" class="hud-pill">Runda 1 / 24</span>
+          <span id="hud-subgame" class="hud-pill hud-subgame">Alegere sub-joc</span>
+        </div>
+
+        <div id="hud-banner" class="hud-banner">Se încarcă masa...</div>
+
+        <div class="hud-right">
+          <button id="btn-open-scores" type="button" class="btn btn-sm btn-outline">
+            Tabel Scor
+          </button>
+          <button id="btn-open-rules" type="button" class="btn btn-sm btn-ghost">
+            Reguli
+          </button>
+          <button id="btn-leave-game" type="button" class="btn btn-sm btn-danger-ghost">
+            Ieși
+          </button>
+        </div>
+      </header>
+
+      <!-- Zona mesei de joc (adversari + centru) -->
+      <section class="felt-table-wrapper">
+        <div id="opponents-ring" class="opponents-ring"></div>
+
+        <!-- Centrul mesei (schimbă conținutul după fază: alegere joc / levată / tablă Rentz / rezumat / final) -->
+        <div id="table-center" class="table-center"></div>
+
+        <!-- Ultima levată (colț stânga-jos pe masă, când există) -->
+        <div id="last-trick-box" class="last-trick-box hidden"></div>
+      </section>
+
+      <!-- Zona jucătorului curent (jos: info + cărți în mână) -->
+      <footer class="my-player-area">
+        <div id="my-seat-bar" class="my-seat-bar"></div>
+        <div id="rentz-pass-row" class="rentz-pass-row hidden">
+          <button id="btn-pass-rentz" type="button" class="btn btn-warning">
+            Spune PAS (nu ai nicio carte validă de pus)
+          </button>
+        </div>
+        <div id="my-hand" class="my-hand" aria-label="Cărțile tale"></div>
+      </footer>
+    </div>
+  </main>
+
+  <!-- MODAL: Tabel Scor & Sub-jocuri Rămase -->
+  <div id="modal-scores" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>Tabel de Scor &amp; Sub-jocuri</h3>
+        <button type="button" class="btn-close" data-close-modal="modal-scores">✕</button>
+      </div>
+      <div id="scores-modal-body" class="modal-body"></div>
+    </div>
+  </div>
+
+  <!-- MODAL: Reguli de bază Rentz -->
+  <div id="modal-rules" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3>Reguli de bază — Rentz</h3>
+        <button type="button" class="btn-close" data-close-modal="modal-rules">✕</button>
+      </div>
+      <div class="modal-body rules-content">
+        <p>
+          <strong>Rentz</strong> se joacă în <strong>3–6 jucători</strong>. Pachetul este ajustat automat astfel încât fiecare jucător să primească exact <strong>8 cărți</strong> (cele mai mari cărți din pachet: de la 9 la As în 3 jucători, 7–As în 4, 5–As în 5, 3–As în 6).
+        </p>
+        <p>
+          Fiecare jucător are la dispoziție cele <strong>8 sub-jocuri</strong> de mai jos și poate alege fiecare sub-joc o singură dată pe parcursul partidei (după ce își vede cele 8 cărți). Nu există atu, iar la jocurile pe levate <strong>obligația la culoare</strong> este strictă.
+        </p>
+        <div class="rules-grid">
+          <div class="rule-item neg">
+            <strong>K♥ Popa de Roșu (-100 pct)</strong>
+            <span>Evită levata care conține Regele de Cupă (K♥).</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>Q Dame (-25 pct / Damă)</strong>
+            <span>Fiecare Damă luată scade 25 de puncte.</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>♦ Carouri (-20 pct / Carou)</strong>
+            <span>Fiecare carte de Caro luată scade 20 de puncte.</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>−M Levate (-20 pct / Levată)</strong>
+            <span>Fiecare levată (mână) luată scade 20 de puncte.</span>
+          </div>
+          <div class="rule-item neg">
+            <strong>∑− Totale</strong>
+            <span>Cumulează toate cele 4 jocuri negative într-o singură rundă (K♥ + Dame + Carouri + Levate).</span>
+          </div>
+          <div class="rule-item pos">
+            <strong>10♣ Zece de Treflă (+100 pct)</strong>
+            <span>Câștigă levata care conține 10 de Treflă pentru +100 de puncte.</span>
+          </div>
+          <div class="rule-item pos">
+            <strong>+M Whist (+20 pct / Levată)</strong>
+            <span>Fiecare levată câștigată aduce +20 de puncte.</span>
+          </div>
+          <div class="rule-item pos">
+            <strong>★ Rentz (Etalare pe culori)</strong>
+            <span>Se deschide fiecare culoare de la cartea de mijloc (Q în 3p, J în 4p, 10 în 5p, 9 în 6p) și se depun cărți adiacente în sus sau în jos. <strong>Asul</strong> oferă încă o mutare, iar <strong>cea mai mică carte</strong> sare următorul jucător. Nu ai voie să spui Pas dacă ai mutare validă!</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

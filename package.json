@@ -1,0 +1,17 @@
+{
+  "name": "rentz-online",
+  "version": "1.0.0",
+  "description": "Multiplayer Rentz card game in browser",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "test": "node tests/game.test.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1"
+  }
+}
