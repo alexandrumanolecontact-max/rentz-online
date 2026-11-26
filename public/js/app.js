@@ -740,8 +740,11 @@ function renderGame(room) {
         return `<span class="${col}">${entry.card.label}${entry.card.symbol}</span>`;
       })
       .join(' ');
+    const lastPts = g.lastTrick.points
+      ? ` · <strong>${formatSigned(g.lastTrick.points)}p</strong>`
+      : '';
     lastTrickBox.innerHTML = `
-      <div>Ultima levată (${escapeHtml(g.lastTrick.winnerName)}):</div>
+      <div>Ultima mână (${escapeHtml(g.lastTrick.winnerName)}${lastPts}):</div>
       <div class="last-trick-cards">${cardsHtml}</div>
     `;
   } else {
@@ -905,10 +908,15 @@ function renderTableCenter(g, me) {
       const row = document.createElement('div');
       row.className = 'trick-cards-row';
       for (const entry of g.currentTrick) {
+        const isWinner = g.trickWinnerId === entry.playerId;
         const slot = document.createElement('div');
-        slot.className = `played-card-slot${
-          g.trickWinnerId === entry.playerId ? ' winner' : ''
-        }`;
+        slot.className = `played-card-slot${isWinner ? ' winner' : ''}`;
+        if (isWinner && g.lastTrickPoints) {
+          const pop = document.createElement('div');
+          pop.className = `trick-pts-pop ${g.lastTrickPoints > 0 ? 'pos' : 'neg'}`;
+          pop.textContent = `${formatSigned(g.lastTrickPoints)} pct`;
+          slot.appendChild(pop);
+        }
         slot.appendChild(createCardElement(entry.card));
         const by = document.createElement('div');
         by.className = 'played-by';

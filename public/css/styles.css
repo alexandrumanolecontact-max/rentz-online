@@ -1026,6 +1026,27 @@ body {
   border-radius: 999px;
 }
 
+.trick-pts-pop {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.82rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 999px;
+  animation: fadeSlideIn 0.18s ease-out;
+}
+
+.trick-pts-pop.pos {
+  background: rgba(38, 184, 119, 0.28);
+  border: 1px solid var(--emerald);
+  color: #84f7be;
+}
+
+.trick-pts-pop.neg {
+  background: rgba(224, 72, 86, 0.28);
+  border: 1px solid var(--crimson);
+  color: #ffb3ba;
+}
+
 .empty-trick-hint {
   color: rgba(255, 255, 255, 0.48);
   font-size: 0.94rem;

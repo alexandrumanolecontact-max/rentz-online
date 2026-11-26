@@ -50,12 +50,14 @@ class RentzGame {
     this.hands = {};
     this.tricksWon = {};
     this.capturedCards = {};
+    this.roundDeltas = {};
     this.trickNumber = 1;
     this.leadPlayerId = null;
     this.currentTurnPlayerId = null;
     this.currentTrick = [];
     this.lastTrick = null;
     this.trickWinnerId = null;
+    this.lastTrickPoints = 0;
     this.statusBanner = '';
 
     // Stare specifică sub-jocului Rentz
@@ -113,12 +115,14 @@ class RentzGame {
     this.hands = {};
     this.tricksWon = {};
     this.capturedCards = {};
+    this.roundDeltas = {};
 
     this.players.forEach((p, idx) => {
       const slice = deck.slice(idx * CARDS_PER_PLAYER, (idx + 1) * CARDS_PER_PLAYER);
       this.hands[p.id] = sortHand(slice);
       this.tricksWon[p.id] = 0;
       this.capturedCards[p.id] = [];
+      this.roundDeltas[p.id] = 0;
     });
 
     this.currentSubgame = null;
@@ -131,6 +135,7 @@ class RentzGame {
     this.currentTrick = [];
     this.lastTrick = null;
     this.trickWinnerId = null;
+    this.lastTrickPoints = 0;
     this.rentzBoard = null;
     this.rentzFinishOrder = [];
     this.rentzLastAction = '';
@@ -300,14 +305,30 @@ class RentzGame {
     const winner = this.getPlayerById(winnerId);
 
     this.tricksWon[winnerId] += 1;
-    for (const entry of this.currentTrick) {
-      this.capturedCards[winnerId].push(entry.card);
+    const trickCards = this.currentTrick.map((entry) => entry.card);
+    for (const c of trickCards) {
+      this.capturedCards[winnerId].push(c);
+    }
+
+    // Calculăm și aplicăm IMEDIAT punctele acestei mâini la scorul câștigătorului levatei
+    const trickPoints = this.calculateTrickPoints(trickCards);
+    if (trickPoints !== 0) {
+      this.scores[winnerId] += trickPoints;
+      this.roundDeltas[winnerId] = (this.roundDeltas[winnerId] || 0) + trickPoints;
     }
 
     this.phase = 'trick_complete';
     this.trickWinnerId = winnerId;
+    this.lastTrickPoints = trickPoints;
     this.currentTurnPlayerId = null;
-    this.statusBanner = `${winner.nickname} ia levata cu ${winningEntry.card.label}${winningEntry.card.symbol}!`;
+
+    const ptsText =
+      trickPoints > 0
+        ? ` (+${trickPoints} pct)`
+        : trickPoints < 0
+        ? ` (${trickPoints} pct)`
+        : '';
+    this.statusBanner = `${winner.nickname} ia mâna cu ${winningEntry.card.label}${winningEntry.card.symbol}!${ptsText}`;
 
     this.clearPendingTimer();
     this.pendingTimer = setTimeout(() => {
@@ -319,20 +340,62 @@ class RentzGame {
     return { ok: true };
   }
 
+  calculateTrickPoints(trickCards) {
+    if (!this.currentSubgame) return 0;
+    const subId = this.currentSubgame.id;
+
+    const hasKH = trickCards.some((c) => c.suit === 'hearts' && c.value === 13);
+    const has10C = trickCards.some((c) => c.suit === 'clubs' && c.value === 10);
+    const queensCount = trickCards.filter((c) => c.value === 12).length;
+    const diamondsCount = trickCards.filter((c) => c.suit === 'diamonds').length;
+
+    let basePts = 0;
+    if (subId === 'king_of_hearts') {
+      basePts = hasKH ? SCORING.KING_OF_HEARTS : 0;
+    } else if (subId === 'ten_of_clubs') {
+      basePts = has10C ? SCORING.TEN_OF_CLUBS : 0;
+    } else if (subId === 'queens') {
+      basePts = queensCount * SCORING.QUEEN_MINUS;
+    } else if (subId === 'diamonds') {
+      basePts = diamondsCount * SCORING.DIAMOND_MINUS;
+    } else if (subId === 'no_tricks') {
+      basePts = SCORING.NO_TRICKS;
+    } else if (subId === 'whist') {
+      basePts = SCORING.WHIST_TRICK;
+    } else if (subId === 'totals_plus') {
+      basePts =
+        (has10C ? SCORING.TEN_OF_CLUBS : 0) +
+        queensCount * SCORING.QUEEN_PLUS +
+        diamondsCount * SCORING.DIAMOND_PLUS +
+        SCORING.WHIST_TRICK;
+    } else if (subId === 'totals_minus') {
+      basePts =
+        (hasKH ? SCORING.KING_OF_HEARTS : 0) +
+        queensCount * SCORING.QUEEN_MINUS +
+        diamondsCount * SCORING.DIAMOND_MINUS +
+        SCORING.NO_TRICKS;
+    }
+
+    const scaled = basePts * this.scoreMultiplier;
+    return scaled === 0 ? 0 : scaled;
+  }
+
   completeTrickTransition(winnerId) {
     this.lastTrick = {
       winnerId,
       winnerName: this.getPlayerById(winnerId)?.nickname || '',
+      points: this.lastTrickPoints,
       cards: this.currentTrick.slice(),
     };
     this.currentTrick = [];
     this.trickWinnerId = null;
+    this.lastTrickPoints = 0;
 
     const earlyEndReason = this.checkTrickEarlyEnd();
     if (earlyEndReason || this.trickNumber >= CARDS_PER_PLAYER) {
-      const deltas = this.scoreTrickRound();
-      const reason = earlyEndReason || 'Cele 8 levate s-au încheiat.';
-      this.finishRound(deltas, reason);
+      const reason = earlyEndReason || 'Cele 8 mâini s-au încheiat.';
+      // Punctele au fost deja aplicate în timp real după fiecare mână!
+      this.finishRound(this.roundDeltas, reason, { alreadyAppliedToScores: true });
       return;
     }
 
@@ -341,7 +404,7 @@ class RentzGame {
     this.currentTurnPlayerId = winnerId;
     this.phase = 'playing_tricks';
     const winner = this.getPlayerById(winnerId);
-    this.statusBanner = `Levata ${this.trickNumber}/${CARDS_PER_PLAYER} — ${winner.nickname} deschide!`;
+    this.statusBanner = `Mâna ${this.trickNumber}/${CARDS_PER_PLAYER} — ${winner.nickname} deschide!`;
   }
 
   checkTrickEarlyEnd() {
@@ -528,16 +591,21 @@ class RentzGame {
     return { ok: true };
   }
 
-  finishRound(baseDeltas, reason) {
+  finishRound(inputDeltas, reason, { alreadyAppliedToScores = false } = {}) {
     this.clearPendingTimer();
 
     const deltas = {};
     const totalsAfter = {};
     for (const p of this.players) {
-      const rawDelta = (baseDeltas[p.id] || 0) * this.scoreMultiplier;
-      const delta = rawDelta === 0 ? 0 : rawDelta;
-      deltas[p.id] = delta;
-      this.scores[p.id] += delta;
+      if (alreadyAppliedToScores) {
+        const d = inputDeltas[p.id] || 0;
+        deltas[p.id] = d === 0 ? 0 : d;
+      } else {
+        const rawDelta = (inputDeltas[p.id] || 0) * this.scoreMultiplier;
+        const delta = rawDelta === 0 ? 0 : rawDelta;
+        deltas[p.id] = delta;
+        this.scores[p.id] += delta;
+      }
       totalsAfter[p.id] = this.scores[p.id];
     }
 
@@ -640,6 +708,7 @@ class RentzGame {
       currentTurnPlayerId: this.currentTurnPlayerId,
       trickNumber: this.trickNumber,
       trickWinnerId: this.trickWinnerId,
+      lastTrickPoints: this.lastTrickPoints,
       statusBanner: this.statusBanner,
       currentSubgame: this.currentSubgame,
       subgamesCatalog: SUBGAMES,
@@ -669,6 +738,7 @@ class RentzGame {
           connected: connectionMap[p.id] !== false,
           cardCount: (this.hands[p.id] || []).length,
           score: this.scores[p.id] || 0,
+          roundDelta: this.roundDeltas[p.id] || 0,
           availableSubgames: this.availableSubgames[p.id] || [],
           tricksWon: this.tricksWon[p.id] || 0,
           captured: this.getCapturedSummary(p.id),

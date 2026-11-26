@@ -9,7 +9,11 @@ TIMERS.TRICK_RESOLVE_MS = 5;
 TIMERS.ROUND_SUMMARY_AUTO_MS = 30;
 
 async function playFullTrickRound(game) {
+  let cumulativeTrickPoints = 0;
+  const scoresBeforeRound = Object.values(game.scores).reduce((a, b) => a + b, 0);
+
   while (game.phase === 'playing_tricks') {
+    const scoresBeforeTrick = Object.values(game.scores).reduce((a, b) => a + b, 0);
     const numPlayers = game.numPlayers;
     for (let step = 0; step < numPlayers; step++) {
       const turnId = game.currentTurnPlayerId;
@@ -19,8 +23,24 @@ async function playFullTrickRound(game) {
       assert.strictEqual(res.ok, true);
     }
     assert.strictEqual(game.phase, 'trick_complete');
+    // Verificam ca scorul s-a actualizat IMEDIAT la finalul mainii (trick_complete)!
+    const scoresAfterTrick = Object.values(game.scores).reduce((a, b) => a + b, 0);
+    assert.strictEqual(
+      scoresAfterTrick - scoresBeforeTrick,
+      game.lastTrickPoints,
+      'Scorul total trebuie sa se actualizeze imediat dupa fiecare mana!'
+    );
+    cumulativeTrickPoints += game.lastTrickPoints;
     await new Promise((r) => setTimeout(r, 15));
   }
+
+  // Verificam ca la finalul sub-jocului NU s-au dublat punctele deja adaugate pe parcurs!
+  const scoresAfterRound = Object.values(game.scores).reduce((a, b) => a + b, 0);
+  assert.strictEqual(
+    scoresAfterRound - scoresBeforeRound,
+    cumulativeTrickPoints,
+    'Scorul final al rundei trebuie sa fie exact suma punctelor pe fiecare mana, fara dubla adunare!'
+  );
 }
 
 async function runTests() {
