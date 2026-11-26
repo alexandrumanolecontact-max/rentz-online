@@ -209,15 +209,98 @@ body {
   box-shadow: 0 0 0 3px rgba(234, 191, 96, 0.18);
 }
 
-/* ECRAN 1: Nickname */
+/* ECRAN 1: Autentificare & Conturi */
 .auth-card {
-  width: min(440px, 92vw);
+  width: min(460px, 93vw);
   background: var(--surface);
   border: 1px solid var(--border-gold);
   border-radius: var(--radius-lg);
-  padding: 38px 32px;
+  padding: 34px 30px;
   box-shadow: var(--shadow-lg);
   text-align: center;
+  margin: 20px 0;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: rgba(7, 18, 14, 0.85);
+  border: 1px solid var(--border-subtle);
+  border-radius: 11px;
+  padding: 4px;
+  margin-bottom: 18px;
+}
+
+.auth-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.94rem;
+  padding: 9px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.auth-tab.active {
+  background: rgba(234, 191, 96, 0.18);
+  color: var(--gold-bright);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.btn-link-subtle {
+  background: none;
+  border: none;
+  color: var(--gold);
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.btn-link-subtle:hover {
+  text-decoration: underline;
+}
+
+.auth-helper-text {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  line-height: 1.45;
+}
+
+.setup-alert {
+  background: rgba(242, 169, 59, 0.14);
+  border: 1px solid rgba(242, 169, 59, 0.5);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 16px;
+  text-align: left;
+  font-size: 0.83rem;
+  line-height: 1.45;
+  color: #ffe2b3;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.setup-alert code {
+  font-family: 'JetBrains Mono', monospace;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 1px 5px;
+  border-radius: 4px;
 }
 
 .brand-suits {

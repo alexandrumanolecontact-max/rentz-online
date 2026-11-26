@@ -1,35 +1,63 @@
 import { createCardElement, getRankLabel, getSuitSymbol, isRedSuit } from './cards.js';
 
-const STORAGE_TOKEN_KEY = 'rentz_player_token';
-const STORAGE_NICK_KEY = 'rentz_nickname';
-
 const state = {
-  playerToken: sessionStorage.getItem(STORAGE_TOKEN_KEY) || '',
-  nickname: sessionStorage.getItem(STORAGE_NICK_KEY) || '',
+  user: null, // { id, username, email }
+  accessToken: '',
   room: null,
+  authConfigured: true,
+  inPasswordRecovery: false,
 };
 
-const socket = window.io();
+let supabaseClient = null;
+const socket = window.io({ autoConnect: false });
 
-// Mentine serverul cloud activ (ex. Render Free) cat timp jucatorul se afla intr-un lobby sau meci
+// Menține serverul cloud activ (ex. Render Free) cât timp jucătorul se află într-un lobby sau meci
 setInterval(() => {
   if (state.room) {
     fetch('/api/health').catch(() => {});
   }
 }, 4 * 60 * 1000);
 
-// Referințe DOM
+// Referințe DOM Ecrane
 const screens = {
-  nickname: document.getElementById('screen-nickname'),
+  auth: document.getElementById('screen-auth'),
   menu: document.getElementById('screen-menu'),
   lobby: document.getElementById('screen-lobby'),
   game: document.getElementById('screen-game'),
 };
 
-const formNickname = document.getElementById('form-nickname');
-const inputNickname = document.getElementById('input-nickname');
+// Referințe DOM Autentificare
+const authSetupBanner = document.getElementById('auth-setup-banner');
+const authTabs = document.getElementById('auth-tabs');
+const tabLogin = document.getElementById('tab-login');
+const tabRegister = document.getElementById('tab-register');
+
+const formLogin = document.getElementById('form-login');
+const loginIdentifier = document.getElementById('login-identifier');
+const loginPassword = document.getElementById('login-password');
+const btnSubmitLogin = document.getElementById('btn-submit-login');
+const btnGotoForgot = document.getElementById('btn-goto-forgot');
+
+const formRegister = document.getElementById('form-register');
+const regUsername = document.getElementById('reg-username');
+const regEmail = document.getElementById('reg-email');
+const regPassword = document.getElementById('reg-password');
+const regPasswordConfirm = document.getElementById('reg-password-confirm');
+const btnSubmitRegister = document.getElementById('btn-submit-register');
+
+const formForgot = document.getElementById('form-forgot');
+const forgotIdentifier = document.getElementById('forgot-identifier');
+const btnSubmitForgot = document.getElementById('btn-submit-forgot');
+const btnBackToLogin = document.getElementById('btn-back-to-login');
+
+const formResetPassword = document.getElementById('form-reset-password');
+const resetNewPassword = document.getElementById('reset-new-password');
+const resetConfirmPassword = document.getElementById('reset-confirm-password');
+const btnSubmitReset = document.getElementById('btn-submit-reset');
+
+// Referințe DOM Meniu, Lobby & Joc
 const displayNickname = document.getElementById('display-nickname');
-const btnChangeNick = document.getElementById('btn-change-nick');
+const btnLogout = document.getElementById('btn-logout');
 const btnCreateRoom = document.getElementById('btn-create-room');
 const formJoinRoom = document.getElementById('form-join-room');
 const inputRoomCode = document.getElementById('input-room-code');
@@ -65,7 +93,7 @@ function showToast(message, isError = false) {
   container.appendChild(toast);
   setTimeout(() => {
     toast.remove();
-  }, 3200);
+  }, 4000);
 }
 
 function escapeHtml(str) {
@@ -80,33 +108,122 @@ function showScreen(name) {
   });
 }
 
-function syncMenuHeader() {
-  displayNickname.textContent = state.nickname;
+function switchAuthView(view) {
+  // view: 'login' | 'register' | 'forgot' | 'reset'
+  const showTabs = view === 'login' || view === 'register';
+  authTabs.classList.toggle('hidden', !showTabs);
+  tabLogin.classList.toggle('active', view === 'login');
+  tabRegister.classList.toggle('active', view === 'register');
+
+  formLogin.classList.toggle('hidden', view !== 'login');
+  formRegister.classList.toggle('hidden', view !== 'register');
+  formForgot.classList.toggle('hidden', view !== 'forgot');
+  formResetPassword.classList.toggle('hidden', view !== 'reset');
 }
 
-// Inițializare sesiune pe conexiune Socket.IO
-socket.on('connect', () => {
-  socket.emit(
-    'session:init',
-    {
-      playerToken: state.playerToken,
-      nickname: state.nickname,
-    },
-    (res) => {
-      if (!res || !res.ok) return;
-      state.playerToken = res.playerToken;
-      sessionStorage.setItem(STORAGE_TOKEN_KEY, state.playerToken);
+function syncMenuHeader() {
+  displayNickname.textContent = state.user?.username || 'Jucător';
+}
 
-      if (res.reconnected && res.room) {
-        handleRoomState(res.room);
-      } else if (state.nickname.length >= 2) {
-        syncMenuHeader();
-        showScreen('menu');
-      } else {
-        showScreen('nickname');
-      }
+/* ==================== INIȚIALIZARE SUPABASE & SESIUNE ==================== */
+
+async function initAuth() {
+  const hashIndicatesRecovery = window.location.hash.includes('type=recovery');
+  if (hashIndicatesRecovery) {
+    state.inPasswordRecovery = true;
+  }
+
+  try {
+    const res = await fetch('/api/auth/config');
+    const cfg = await res.json();
+    state.authConfigured = Boolean(cfg.configured);
+
+    if (!state.authConfigured) {
+      authSetupBanner.classList.remove('hidden');
+      showScreen('auth');
+      switchAuthView('login');
+      return;
     }
-  );
+
+    authSetupBanner.classList.add('hidden');
+    supabaseClient = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseAnonKey);
+
+    supabaseClient.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') {
+        state.inPasswordRecovery = true;
+        showScreen('auth');
+        switchAuthView('reset');
+        return;
+      }
+
+      if (session?.access_token) {
+        state.accessToken = session.access_token;
+        if (!state.inPasswordRecovery) {
+          connectAuthenticatedSocket(session.access_token);
+        }
+      } else if (event === 'SIGNED_OUT') {
+        state.user = null;
+        state.accessToken = '';
+        state.room = null;
+        showScreen('auth');
+        switchAuthView('login');
+      }
+    });
+
+    const { data } = await supabaseClient.auth.getSession();
+    if (state.inPasswordRecovery) {
+      showScreen('auth');
+      switchAuthView('reset');
+      return;
+    }
+
+    if (data?.session?.access_token) {
+      state.accessToken = data.session.access_token;
+      connectAuthenticatedSocket(data.session.access_token);
+    } else {
+      showScreen('auth');
+      switchAuthView('login');
+    }
+  } catch {
+    showToast('Nu s-a putut încărca configurația serverului.', true);
+  }
+}
+
+function connectAuthenticatedSocket(accessToken) {
+  state.accessToken = accessToken;
+  if (!socket.connected) {
+    socket.connect();
+  } else {
+    emitSessionInit();
+  }
+}
+
+function emitSessionInit() {
+  if (!state.accessToken) return;
+  socket.emit('session:init', { accessToken: state.accessToken }, (res) => {
+    if (!res || !res.ok) {
+      if (res?.authRequired) {
+        supabaseClient?.auth.signOut();
+        showScreen('auth');
+        switchAuthView('login');
+      }
+      return;
+    }
+    state.user = res.user;
+    syncMenuHeader();
+
+    if (res.reconnected && res.room) {
+      handleRoomState(res.room);
+    } else if (!state.room) {
+      showScreen('menu');
+    }
+  });
+}
+
+socket.on('connect', () => {
+  if (state.accessToken && !state.inPasswordRecovery) {
+    emitSessionInit();
+  }
 });
 
 socket.on('room:state', (roomPayload) => {
@@ -130,37 +247,186 @@ function handleRoomState(room) {
   }
 }
 
-/* ==================== ECRAN 1 & 2: NICKNAME + MENIU ==================== */
+/* ==================== EVENIMENTE AUTENTIFICARE ==================== */
 
-formNickname.addEventListener('submit', (e) => {
+tabLogin.addEventListener('click', () => switchAuthView('login'));
+tabRegister.addEventListener('click', () => switchAuthView('register'));
+btnGotoForgot.addEventListener('click', () => switchAuthView('forgot'));
+btnBackToLogin.addEventListener('click', () => switchAuthView('login'));
+
+formLogin.addEventListener('submit', async (e) => {
   e.preventDefault();
-  const nick = inputNickname.value.trim().replace(/\s+/g, ' ');
-  if (nick.length < 2) {
-    showToast('Nickname-ul trebuie să aibă minim 2 caractere.', true);
+  btnSubmitLogin.disabled = true;
+  try {
+    const resp = await fetch('/api/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: loginIdentifier.value.trim(),
+        password: loginPassword.value,
+      }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      showToast(data.error || 'Autentificare eșuată.', true);
+      return;
+    }
+
+    state.user = data.user;
+    loginPassword.value = '';
+    if (supabaseClient && data.session) {
+      await supabaseClient.auth.setSession(data.session);
+    }
+    connectAuthenticatedSocket(data.session.access_token);
+  } catch {
+    showToast('Eroare de conexiune la autentificare.', true);
+  } finally {
+    btnSubmitLogin.disabled = false;
+  }
+});
+
+formRegister.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (regPassword.value !== regPasswordConfirm.value) {
+    showToast('Parolele introduse nu coincid!', true);
     return;
   }
-  state.nickname = nick;
-  sessionStorage.setItem(STORAGE_NICK_KEY, nick);
-  syncMenuHeader();
-  showScreen('menu');
+
+  btnSubmitRegister.disabled = true;
+  try {
+    const resp = await fetch('/api/auth/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        username: regUsername.value.trim(),
+        email: regEmail.value.trim(),
+        password: regPassword.value,
+        redirectTo: `${window.location.origin}/`,
+      }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      showToast(data.error || 'Înregistrare eșuată.', true);
+      return;
+    }
+
+    regPassword.value = '';
+    regPasswordConfirm.value = '';
+
+    if (data.needsEmailConfirmation) {
+      showToast(
+        'Cont creat! Verifică adresa de email pentru confirmare, apoi autentifică-te.',
+        false
+      );
+      loginIdentifier.value = regUsername.value.trim();
+      switchAuthView('login');
+      return;
+    }
+
+    state.user = data.user;
+    showToast('Contul a fost creat cu succes! Bine ai venit!', false);
+    if (supabaseClient && data.session) {
+      await supabaseClient.auth.setSession(data.session);
+    }
+    connectAuthenticatedSocket(data.session.access_token);
+  } catch {
+    showToast('Eroare de conexiune la înregistrare.', true);
+  } finally {
+    btnSubmitRegister.disabled = false;
+  }
 });
 
-btnChangeNick.addEventListener('click', () => {
-  inputNickname.value = state.nickname;
-  showScreen('nickname');
-  inputNickname.focus();
+formForgot.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  btnSubmitForgot.disabled = true;
+  try {
+    const resp = await fetch('/api/auth/forgot-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        identifier: forgotIdentifier.value.trim(),
+        redirectTo: `${window.location.origin}/`,
+      }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      showToast(data.error || 'Nu s-a putut trimite emailul de resetare.', true);
+      return;
+    }
+    showToast(data.message, false);
+    forgotIdentifier.value = '';
+    switchAuthView('login');
+  } catch {
+    showToast('Eroare de conexiune.', true);
+  } finally {
+    btnSubmitForgot.disabled = false;
+  }
 });
+
+formResetPassword.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (resetNewPassword.value.length < 6) {
+    showToast('Parola nouă trebuie să aibă cel puțin 6 caractere.', true);
+    return;
+  }
+  if (resetNewPassword.value !== resetConfirmPassword.value) {
+    showToast('Parolele nu coincid!', true);
+    return;
+  }
+  if (!supabaseClient) return;
+
+  btnSubmitReset.disabled = true;
+  try {
+    const { error } = await supabaseClient.auth.updateUser({
+      password: resetNewPassword.value,
+    });
+    if (error) {
+      showToast(error.message || 'Nu s-a putut actualiza parola.', true);
+      return;
+    }
+
+    state.inPasswordRecovery = false;
+    resetNewPassword.value = '';
+    resetConfirmPassword.value = '';
+    window.history.replaceState({}, document.title, window.location.pathname);
+    showToast('Parola a fost schimbată cu succes!', false);
+
+    const { data } = await supabaseClient.auth.getSession();
+    if (data?.session?.access_token) {
+      connectAuthenticatedSocket(data.session.access_token);
+    } else {
+      switchAuthView('login');
+    }
+  } catch {
+    showToast('Eroare la salvarea noii parole.', true);
+  } finally {
+    btnSubmitReset.disabled = false;
+  }
+});
+
+btnLogout.addEventListener('click', async () => {
+  socket.emit('session:logout', {}, async () => {
+    if (supabaseClient) {
+      await supabaseClient.auth.signOut();
+    }
+    state.user = null;
+    state.accessToken = '';
+    state.room = null;
+    showScreen('auth');
+    switchAuthView('login');
+  });
+});
+
+/* ==================== ECRAN 2: MENIU CAMERE ==================== */
 
 btnCreateRoom.addEventListener('click', () => {
   btnCreateRoom.disabled = true;
-  socket.emit('room:create', { nickname: state.nickname }, (res) => {
+  socket.emit('room:create', {}, (res) => {
     btnCreateRoom.disabled = false;
     if (!res || !res.ok) {
       showToast(res?.error || 'Nu s-a putut crea camera.', true);
       return;
     }
-    state.playerToken = res.playerToken;
-    sessionStorage.setItem(STORAGE_TOKEN_KEY, state.playerToken);
     handleRoomState(res.room);
   });
 });
@@ -176,13 +442,11 @@ formJoinRoom.addEventListener('submit', (e) => {
     showToast('Introdu codul de invitație!', true);
     return;
   }
-  socket.emit('room:join', { nickname: state.nickname, code }, (res) => {
+  socket.emit('room:join', { code }, (res) => {
     if (!res || !res.ok) {
       showToast(res?.error || 'Nu s-a putut intra în cameră.', true);
       return;
     }
-    state.playerToken = res.playerToken;
-    sessionStorage.setItem(STORAGE_TOKEN_KEY, state.playerToken);
     inputRoomCode.value = '';
     handleRoomState(res.room);
   });
@@ -220,6 +484,7 @@ btnToggleReady.addEventListener('click', () => {
 });
 
 function renderLobby(room) {
+  const myId = state.user?.id;
   lobbyRoomCode.textContent = room.code;
   lobbyCountBadge.textContent = `Jucători: ${room.players.length} / ${room.maxPlayers} (minim ${room.minPlayers})`;
 
@@ -230,7 +495,7 @@ function renderLobby(room) {
 
     if (p) {
       seat.className = `lobby-seat${p.ready ? ' ready' : ''}`;
-      const isMe = p.id === state.playerToken;
+      const isMe = p.id === myId;
       const initial = p.nickname.charAt(0).toUpperCase();
       seat.innerHTML = `
         <div class="seat-user">
@@ -252,7 +517,7 @@ function renderLobby(room) {
     lobbyPlayersGrid.appendChild(seat);
   }
 
-  const me = room.players.find((p) => p.id === state.playerToken);
+  const me = room.players.find((p) => p.id === myId);
   const readyCount = room.players.filter((p) => p.ready).length;
 
   if (!room.canReady) {
@@ -314,9 +579,8 @@ function renderCapturedBadges(p, subgame) {
 
 function renderGame(room) {
   const g = room.game;
-  const myId = state.playerToken;
+  const myId = state.user?.id;
 
-  // HUD sus
   hudRound.textContent = `Runda ${g.roundNumber} / ${g.totalRounds}`;
   if (g.currentSubgame) {
     hudSubgame.textContent = `${g.currentSubgame.badge} ${g.currentSubgame.name}`;
@@ -329,12 +593,10 @@ function renderGame(room) {
   }
   hudBanner.textContent = g.statusBanner || '';
 
-  // Rotim jucătorii astfel încât EU să fiu mereu jos (index 0), iar ceilalți în sens orar sus
   const rotated = getRotatedPlayers(g.players, myId);
   const me = rotated[0];
   const opponents = rotated.slice(1);
 
-  // Randare adversari
   opponentsRing.innerHTML = '';
   for (const opp of opponents) {
     const isTurn = g.currentTurnPlayerId === opp.id;
@@ -357,7 +619,6 @@ function renderGame(room) {
     opponentsRing.appendChild(seatEl);
   }
 
-  // Randare bară proprie (jos)
   if (me) {
     const myTurn = g.currentTurnPlayerId === me.id;
     const myScoreClass = me.score > 0 ? 'pos' : me.score < 0 ? 'neg' : '';
@@ -371,7 +632,6 @@ function renderGame(room) {
     `;
   }
 
-  // Ultima levată (dacă suntem în joc pe levate și există o levată precedentă)
   if (g.lastTrick && (g.phase === 'playing_tricks' || g.phase === 'trick_complete')) {
     lastTrickBox.classList.remove('hidden');
     const cardsHtml = g.lastTrick.cards
@@ -388,21 +648,17 @@ function renderGame(room) {
     lastTrickBox.classList.add('hidden');
   }
 
-  // Randare centru masă în funcție de fază
   renderTableCenter(g, me);
-
-  // Buton Pas la Rentz (vizibil doar când e rândul meu și nu am mutare validă)
   rentzPassRow.classList.toggle('hidden', !g.canPassRentz);
-
-  // Randare cărți în mână
   renderMyHand(g);
 }
 
 function renderTableCenter(g, me) {
+  const myId = state.user?.id;
   tableCenter.innerHTML = '';
 
   if (g.phase === 'choosing_subgame') {
-    if (g.chooserId === state.playerToken && me) {
+    if (g.chooserId === myId && me) {
       const box = document.createElement('div');
       box.className = 'subgame-picker';
       box.innerHTML = `<div class="picker-title">Privește-ți cărțile de jos și alege sub-jocul rundei:</div>`;
@@ -647,7 +903,7 @@ function renderTableCenter(g, me) {
 function renderMyHand(g) {
   myHandContainer.innerHTML = '';
   const isActionPhase = g.phase === 'playing_tricks' || g.phase === 'playing_rentz';
-  const isMyTurn = g.currentTurnPlayerId === state.playerToken;
+  const isMyTurn = g.currentTurnPlayerId === state.user?.id;
   const playableSet = new Set(g.playableCardIds || []);
 
   for (const card of g.myHand) {
@@ -767,3 +1023,5 @@ document.querySelectorAll('[data-close-modal]').forEach((btn) => {
     if (e.target === backdrop) backdrop.classList.add('hidden');
   });
 });
+
+initAuth();

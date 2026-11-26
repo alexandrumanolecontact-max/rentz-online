@@ -15,8 +15,8 @@
 <body>
   <div id="toast-container" aria-live="polite"></div>
 
-  <!-- ECRAN 1: Alegere Nickname (fără cont) -->
-  <main id="screen-nickname" class="screen active">
+  <!-- ECRAN 1: Autentificare / Înregistrare / Recuperare Parolă -->
+  <main id="screen-auth" class="screen active">
     <div class="auth-card">
       <div class="brand-suits" aria-hidden="true">
         <span class="suit-black">♠</span>
@@ -25,21 +25,176 @@
         <span class="suit-red">♦</span>
       </div>
       <h1 class="brand-title">RENTZ</h1>
-      <p class="brand-subtitle">Jocul clasic românesc de cărți — direct în browser, fără cont</p>
+      <p class="brand-subtitle">Intră în contul tău pentru a juca alături de prieteni</p>
 
-      <form id="form-nickname" class="stack-form" autocomplete="off">
-        <label for="input-nickname" class="field-label">Alege un nickname</label>
-        <input
-          id="input-nickname"
-          type="text"
-          class="text-input"
-          placeholder="Ex: Andrei"
-          minlength="2"
-          maxlength="18"
-          required
-          autofocus
-        />
-        <button type="submit" class="btn btn-primary btn-lg">Continuă</button>
+      <!-- Avertizare vizibilă doar până când se adaugă cheile Supabase în Environment -->
+      <div id="auth-setup-banner" class="setup-alert hidden">
+        <strong>Configurare Bază de Date necesară:</strong>
+        <span>Adaugă variabilele <code>SUPABASE_URL</code> și <code>SUPABASE_ANON_KEY</code> în Render (sau în fișierul <code>.env</code> local) și rulează <code>supabase/schema.sql</code>.</span>
+      </div>
+
+      <!-- Taburi Login / Înregistrare -->
+      <div id="auth-tabs" class="auth-tabs">
+        <button type="button" id="tab-login" class="auth-tab active">Autentificare</button>
+        <button type="button" id="tab-register" class="auth-tab">Cont Nou</button>
+      </div>
+
+      <!-- VIEW A: Formular Autentificare -->
+      <form id="form-login" class="stack-form" autocomplete="on">
+        <div class="field-group">
+          <label for="login-identifier" class="field-label">Nume de utilizator sau Email</label>
+          <input
+            id="login-identifier"
+            name="username"
+            type="text"
+            class="text-input"
+            placeholder="Ex: Andrei sau email@exemplu.ro"
+            autocomplete="username"
+            required
+          />
+        </div>
+
+        <div class="field-group">
+          <div class="field-label-row">
+            <label for="login-password" class="field-label">Parolă</label>
+            <button type="button" id="btn-goto-forgot" class="btn-link-subtle">
+              Ai uitat parola?
+            </button>
+          </div>
+          <input
+            id="login-password"
+            name="password"
+            type="password"
+            class="text-input"
+            placeholder="••••••••"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+
+        <button type="submit" id="btn-submit-login" class="btn btn-primary btn-lg">
+          Intră în Cont
+        </button>
+      </form>
+
+      <!-- VIEW B: Formular Înregistrare -->
+      <form id="form-register" class="stack-form hidden" autocomplete="on">
+        <div class="field-group">
+          <label for="reg-username" class="field-label">Nume de utilizator</label>
+          <input
+            id="reg-username"
+            name="username"
+            type="text"
+            class="text-input"
+            placeholder="Ex: Andrei (3–18 caractere)"
+            minlength="3"
+            maxlength="18"
+            autocomplete="username"
+            required
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="reg-email" class="field-label">Email (pentru recuperare parolă)</label>
+          <input
+            id="reg-email"
+            name="email"
+            type="email"
+            class="text-input"
+            placeholder="exemplu@email.com"
+            autocomplete="email"
+            required
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="reg-password" class="field-label">Parolă (minim 6 caractere)</label>
+          <input
+            id="reg-password"
+            name="new-password"
+            type="password"
+            class="text-input"
+            placeholder="Minim 6 caractere"
+            minlength="6"
+            autocomplete="new-password"
+            required
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="reg-password-confirm" class="field-label">Confirmă parola</label>
+          <input
+            id="reg-password-confirm"
+            type="password"
+            class="text-input"
+            placeholder="Repetă parola"
+            minlength="6"
+            autocomplete="new-password"
+            required
+          />
+        </div>
+
+        <button type="submit" id="btn-submit-register" class="btn btn-primary btn-lg">
+          Creează Contul
+        </button>
+      </form>
+
+      <!-- VIEW C: Recuperare Parolă (Trimitere link pe email) -->
+      <form id="form-forgot" class="stack-form hidden" autocomplete="on">
+        <p class="auth-helper-text">
+          Introdu adresa de email (sau numele de utilizator) și îți trimitem un link pentru setarea unei parole noi.
+        </p>
+        <div class="field-group">
+          <label for="forgot-identifier" class="field-label">Email sau Nume de utilizator</label>
+          <input
+            id="forgot-identifier"
+            type="text"
+            class="text-input"
+            placeholder="exemplu@email.com"
+            required
+          />
+        </div>
+
+        <button type="submit" id="btn-submit-forgot" class="btn btn-primary btn-lg">
+          Trimite Link de Resetare
+        </button>
+        <button type="button" id="btn-back-to-login" class="btn btn-ghost">
+          ← Înapoi la Autentificare
+        </button>
+      </form>
+
+      <!-- VIEW D: Setare Parolă Nouă (când utilizatorul vine din linkul de email) -->
+      <form id="form-reset-password" class="stack-form hidden" autocomplete="off">
+        <p class="auth-helper-text">
+          Alege o parolă nouă pentru contul tău.
+        </p>
+        <div class="field-group">
+          <label for="reset-new-password" class="field-label">Parolă nouă</label>
+          <input
+            id="reset-new-password"
+            type="password"
+            class="text-input"
+            placeholder="Minim 6 caractere"
+            minlength="6"
+            required
+          />
+        </div>
+
+        <div class="field-group">
+          <label for="reset-confirm-password" class="field-label">Confirmă parola nouă</label>
+          <input
+            id="reset-confirm-password"
+            type="password"
+            class="text-input"
+            placeholder="Repetă parola nouă"
+            minlength="6"
+            required
+          />
+        </div>
+
+        <button type="submit" id="btn-submit-reset" class="btn btn-primary btn-lg">
+          Salvează Parola Nouă
+        </button>
       </form>
     </div>
   </main>
@@ -52,9 +207,9 @@
           <span class="suit-red">♥</span> RENTZ
         </div>
         <div class="user-pill">
-          <span class="user-pill-label">Nickname:</span>
+          <span class="user-pill-label">Cont:</span>
           <strong id="display-nickname">Jucător</strong>
-          <button id="btn-change-nick" type="button" class="btn-link">Schimbă</button>
+          <button id="btn-logout" type="button" class="btn-link">Deconectare</button>
         </div>
       </header>
 
@@ -157,14 +312,14 @@
       <section class="felt-table-wrapper">
         <div id="opponents-ring" class="opponents-ring"></div>
 
-        <!-- Centrul mesei (schimbă conținutul după fază: alegere joc / levată / tablă Rentz / rezumat / final) -->
+        <!-- Centrul mesei -->
         <div id="table-center" class="table-center"></div>
 
-        <!-- Ultima levată (colț stânga-jos pe masă, când există) -->
+        <!-- Ultima levată -->
         <div id="last-trick-box" class="last-trick-box hidden"></div>
       </section>
 
-      <!-- Zona jucătorului curent (jos: info + cărți în mână) -->
+      <!-- Zona jucătorului curent -->
       <footer class="my-player-area">
         <div id="my-seat-bar" class="my-seat-bar"></div>
         <div id="rentz-pass-row" class="rentz-pass-row hidden">
@@ -240,6 +395,7 @@
     </div>
   </div>
 
+  <script src="/vendor/supabase/supabase.js"></script>
   <script src="/socket.io/socket.io.js"></script>
   <script type="module" src="/js/app.js"></script>
 </body>

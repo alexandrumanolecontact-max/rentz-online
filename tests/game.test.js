@@ -106,7 +106,16 @@ async function runTests() {
   const port = server.address().port;
   const baseUrl = `http://127.0.0.1:${port}`;
 
-  for (const route of ['/', '/api/health', '/css/styles.css', '/js/app.js', '/js/cards.js', '/socket.io/socket.io.js']) {
+  for (const route of [
+    '/',
+    '/api/health',
+    '/api/auth/config',
+    '/css/styles.css',
+    '/js/app.js',
+    '/js/cards.js',
+    '/socket.io/socket.io.js',
+    '/vendor/supabase/supabase.js',
+  ]) {
     const res = await fetch(`${baseUrl}${route}`);
     assert.strictEqual(res.status, 200, `Ruta ${route} trebuie sa raspunda cu 200 OK`);
   }
