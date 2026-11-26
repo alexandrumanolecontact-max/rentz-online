@@ -22,10 +22,26 @@ function createStatelessClient() {
   });
 }
 
+function createAuthenticatedClient(accessToken) {
+  if (!isAuthConfigured()) return null;
+  return createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+}
+
 function translateAuthError(message = '') {
   const m = message.toLowerCase();
   if (m.includes('invalid login credentials')) {
-    return 'Nume de utilizator / email sau parolă incorectă.';
+    return 'Username cont / email sau parolă incorectă.';
   }
   if (m.includes('email not confirmed')) {
     return 'Adresa de email nu a fost confirmată încă. Verifică emailul (inclusiv Spam) sau dezactivează opțiunea Confirm Email în Supabase.';
@@ -42,8 +58,11 @@ function translateAuthError(message = '') {
   if (m.includes('different from the old password') || m.includes('same_password')) {
     return 'Parola nouă trebuie să fie diferită de parola veche.';
   }
+  if (m.includes('profiles_display_name_lower_key')) {
+    return 'Acest nume de jucător este deja folosit. Alege altul.';
+  }
   if (m.includes('profiles_username_lower_key') || m.includes('duplicate key')) {
-    return 'Acest nume de utilizator este deja folosit. Alege altul.';
+    return 'Acest username de cont este deja folosit. Alege altul.';
   }
   if (m.includes('relation "public.profiles" does not exist') || m.includes('get_email_for_login')) {
     return 'Tabelul profiles nu a fost creat încă în Supabase. Rulează scriptul supabase/schema.sql în SQL Editor.';
@@ -51,21 +70,41 @@ function translateAuthError(message = '') {
   return message || 'A apărut o eroare la autentificare.';
 }
 
-function validateUsername(raw) {
+function validateAccountUsername(raw) {
   const username = typeof raw === 'string' ? raw.trim() : '';
   if (username.length < 3 || username.length > 18) {
     return {
       ok: false,
-      error: 'Numele de utilizator trebuie să aibă între 3 și 18 caractere.',
+      error: 'Username-ul contului trebuie să aibă între 3 și 18 caractere.',
     };
   }
   if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
     return {
       ok: false,
-      error: 'Numele de utilizator poate conține doar litere, cifre, punct (.), cratimă (-) sau underscore (_), fără spații.',
+      error:
+        'Username-ul contului poate conține doar litere, cifre, punct (.), cratimă (-) sau underscore (_), fără spații.',
     };
   }
   return { ok: true, username };
+}
+
+function validateDisplayName(raw) {
+  const displayName =
+    typeof raw === 'string' ? raw.trim().replace(/\s+/g, ' ') : '';
+  if (displayName.length < 2 || displayName.length > 18) {
+    return {
+      ok: false,
+      error: 'Numele afișat în joc trebuie să aibă între 2 și 18 caractere.',
+    };
+  }
+  if (!/^[a-zA-Z0-9ăâîșțĂÂÎȘȚ _.-]+$/.test(displayName)) {
+    return {
+      ok: false,
+      error:
+        'Numele de jucător poate conține litere, cifre, spații, punct (.), cratimă (-) sau underscore (_).',
+    };
+  }
+  return { ok: true, displayName };
 }
 
 function validateEmail(raw) {
@@ -76,13 +115,35 @@ function validateEmail(raw) {
   return { ok: true, email };
 }
 
+async function fetchUserProfile(client, user) {
+  const { data: profile } = await client
+    .from('profiles')
+    .select('username, display_name')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  const accountUsername =
+    profile?.username ||
+    user.user_metadata?.username ||
+    (user.email ? user.email.split('@')[0] : 'cont');
+  const displayName = profile?.display_name || null;
+
+  return {
+    id: user.id,
+    email: user.email,
+    accountUsername,
+    displayName,
+    needsDisplayName: !displayName,
+  };
+}
+
 async function registerAccount({ username: rawUsername, email: rawEmail, password, redirectTo }) {
   const client = createStatelessClient();
   if (!client) {
     return { ok: false, error: 'Autentificarea Supabase nu este configurată încă pe server.' };
   }
 
-  const uCheck = validateUsername(rawUsername);
+  const uCheck = validateAccountUsername(rawUsername);
   if (!uCheck.ok) return uCheck;
 
   const eCheck = validateEmail(rawEmail);
@@ -92,7 +153,7 @@ async function registerAccount({ username: rawUsername, email: rawEmail, passwor
     return { ok: false, error: 'Parola trebuie să aibă cel puțin 6 caractere.' };
   }
 
-  // Verificăm dacă numele de utilizator este deja ocupat
+  // Verificăm dacă username-ul de cont este deja ocupat
   const { data: existingProfile, error: profileErr } = await client
     .from('profiles')
     .select('id')
@@ -103,7 +164,7 @@ async function registerAccount({ username: rawUsername, email: rawEmail, passwor
     return { ok: false, error: translateAuthError(profileErr.message) };
   }
   if (existingProfile) {
-    return { ok: false, error: 'Acest nume de utilizator este deja folosit. Alege altul.' };
+    return { ok: false, error: 'Acest username de cont este deja folosit. Alege altul.' };
   }
 
   const { data, error } = await client.auth.signUp({
@@ -119,7 +180,6 @@ async function registerAccount({ username: rawUsername, email: rawEmail, passwor
     return { ok: false, error: translateAuthError(error.message) };
   }
 
-  // Dacă Email Enumeration Protection este activ și emailul există deja, identities este gol
   if (data?.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
     return { ok: false, error: 'Există deja un cont înregistrat cu această adresă de email.' };
   }
@@ -127,19 +187,7 @@ async function registerAccount({ username: rawUsername, email: rawEmail, passwor
   return {
     ok: true,
     needsEmailConfirmation: !data.session,
-    session: data.session
-      ? {
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-        }
-      : null,
-    user: data.user
-      ? {
-          id: data.user.id,
-          username: uCheck.username,
-          email: data.user.email,
-        }
-      : null,
+    accountUsername: uCheck.username,
   };
 }
 
@@ -151,7 +199,7 @@ async function loginAccount({ identifier: rawIdentifier, password }) {
 
   const identifier = typeof rawIdentifier === 'string' ? rawIdentifier.trim() : '';
   if (!identifier || typeof password !== 'string' || !password) {
-    return { ok: false, error: 'Completează numele de utilizator (sau emailul) și parola.' };
+    return { ok: false, error: 'Completează username-ul contului (sau emailul) și parola.' };
   }
 
   let email = identifier.toLowerCase();
@@ -163,7 +211,7 @@ async function loginAccount({ identifier: rawIdentifier, password }) {
       return { ok: false, error: translateAuthError(rpcErr.message) };
     }
     if (!resolvedEmail) {
-      return { ok: false, error: 'Nume de utilizator / email sau parolă incorectă.' };
+      return { ok: false, error: 'Username cont / email sau parolă incorectă.' };
     }
     email = resolvedEmail;
   }
@@ -177,7 +225,7 @@ async function loginAccount({ identifier: rawIdentifier, password }) {
     return { ok: false, error: translateAuthError(error?.message) };
   }
 
-  const username = await fetchUsernameForUser(client, data.user);
+  const userProfile = await fetchUserProfile(client, data.user);
 
   return {
     ok: true,
@@ -185,10 +233,61 @@ async function loginAccount({ identifier: rawIdentifier, password }) {
       access_token: data.session.access_token,
       refresh_token: data.session.refresh_token,
     },
+    user: userProfile,
+  };
+}
+
+async function setDisplayName({ accessToken, displayName: rawDisplayName }) {
+  const verified = await verifyAccessToken(accessToken);
+  if (!verified.ok) {
+    return verified;
+  }
+
+  const dCheck = validateDisplayName(rawDisplayName);
+  if (!dCheck.ok) return dCheck;
+
+  const authedClient = createAuthenticatedClient(accessToken);
+  if (!authedClient) {
+    return { ok: false, error: 'Autentificare neconfigurată.' };
+  }
+
+  // Verificăm dacă alt jucător are deja acest nume de joc
+  const { data: taken, error: checkErr } = await authedClient
+    .from('profiles')
+    .select('id')
+    .eq('display_name_lower', dCheck.displayName.toLowerCase())
+    .neq('id', verified.user.id)
+    .maybeSingle();
+
+  if (checkErr) {
+    return { ok: false, error: translateAuthError(checkErr.message) };
+  }
+  if (taken) {
+    return {
+      ok: false,
+      error: 'Acest nume de jucător este deja folosit de altcineva. Alege altul.',
+    };
+  }
+
+  const { data: updated, error: updateErr } = await authedClient
+    .from('profiles')
+    .update({ display_name: dCheck.displayName })
+    .eq('id', verified.user.id)
+    .select('username, display_name')
+    .single();
+
+  if (updateErr || !updated) {
+    return { ok: false, error: translateAuthError(updateErr?.message) };
+  }
+
+  return {
+    ok: true,
     user: {
-      id: data.user.id,
-      username,
-      email: data.user.email,
+      id: verified.user.id,
+      email: verified.user.email,
+      accountUsername: updated.username,
+      displayName: updated.display_name,
+      needsDisplayName: false,
     },
   };
 }
@@ -201,7 +300,7 @@ async function requestPasswordReset({ identifier: rawIdentifier, redirectTo }) {
 
   const identifier = typeof rawIdentifier === 'string' ? rawIdentifier.trim() : '';
   if (!identifier) {
-    return { ok: false, error: 'Introdu adresa ta de email (sau numele de utilizator).' };
+    return { ok: false, error: 'Introdu adresa ta de email (sau username-ul contului).' };
   }
 
   let email = identifier.toLowerCase();
@@ -213,7 +312,6 @@ async function requestPasswordReset({ identifier: rawIdentifier, redirectTo }) {
       return { ok: false, error: translateAuthError(rpcErr.message) };
     }
     if (!resolvedEmail) {
-      // Răspuns neutru pentru confidențialitate
       return {
         ok: true,
         message:
@@ -241,19 +339,6 @@ async function requestPasswordReset({ identifier: rawIdentifier, redirectTo }) {
   };
 }
 
-async function fetchUsernameForUser(client, user) {
-  const { data: profile } = await client
-    .from('profiles')
-    .select('username')
-    .eq('id', user.id)
-    .maybeSingle();
-
-  if (profile && profile.username) {
-    return profile.username;
-  }
-  return user.user_metadata?.username || (user.email ? user.email.split('@')[0] : 'Jucător');
-}
-
 async function verifyAccessToken(accessToken) {
   const client = createStatelessClient();
   if (!client) {
@@ -268,14 +353,10 @@ async function verifyAccessToken(accessToken) {
     return { ok: false, error: 'Sesiunea a expirat. Autentifică-te din nou.' };
   }
 
-  const username = await fetchUsernameForUser(client, data.user);
+  const userProfile = await fetchUserProfile(client, data.user);
   return {
     ok: true,
-    user: {
-      id: data.user.id,
-      username,
-      email: data.user.email,
-    },
+    user: userProfile,
   };
 }
 
@@ -285,6 +366,7 @@ module.exports = {
   isAuthConfigured,
   registerAccount,
   loginAccount,
+  setDisplayName,
   requestPasswordReset,
   verifyAccessToken,
 };

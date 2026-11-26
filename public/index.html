@@ -42,13 +42,13 @@
       <!-- VIEW A: Formular Autentificare -->
       <form id="form-login" class="stack-form" autocomplete="on">
         <div class="field-group">
-          <label for="login-identifier" class="field-label">Nume de utilizator sau Email</label>
+          <label for="login-identifier" class="field-label">Username cont sau Email</label>
           <input
             id="login-identifier"
             name="username"
             type="text"
             class="text-input"
-            placeholder="Ex: Andrei sau email@exemplu.ro"
+            placeholder="Username-ul contului sau email@exemplu.ro"
             autocomplete="username"
             required
           />
@@ -80,13 +80,13 @@
       <!-- VIEW B: Formular Înregistrare -->
       <form id="form-register" class="stack-form hidden" autocomplete="on">
         <div class="field-group">
-          <label for="reg-username" class="field-label">Nume de utilizator</label>
+          <label for="reg-username" class="field-label">Username cont (pentru autentificare)</label>
           <input
             id="reg-username"
             name="username"
             type="text"
             class="text-input"
-            placeholder="Ex: Andrei (3–18 caractere)"
+            placeholder="Folosit doar la login (3–18 caractere)"
             minlength="3"
             maxlength="18"
             autocomplete="username"
@@ -199,6 +199,44 @@
     </div>
   </main>
 
+  <!-- ECRAN 1B: Alegere Nume de Jucător (apare la primul login!) -->
+  <main id="screen-setup-name" class="screen">
+    <div class="auth-card">
+      <div class="brand-suits" aria-hidden="true">
+        <span class="suit-black">♠</span>
+        <span class="suit-red">♥</span>
+        <span class="suit-black">♣</span>
+        <span class="suit-red">♦</span>
+      </div>
+      <h1 class="brand-title" style="font-size: 2rem">NUME DE JUCĂTOR</h1>
+      <p class="brand-subtitle">
+        Alege numele cu care vei apărea în lobby și la masa de joc (separat de username-ul folosit pentru autentificarea în cont).
+      </p>
+
+      <form id="form-setup-name" class="stack-form" autocomplete="off">
+        <div class="field-group">
+          <label for="input-display-name" class="field-label">Numele tău afișat în joc</label>
+          <input
+            id="input-display-name"
+            type="text"
+            class="text-input"
+            placeholder="Ex: Andrei"
+            minlength="2"
+            maxlength="18"
+            required
+          />
+        </div>
+
+        <button type="submit" id="btn-submit-display-name" class="btn btn-primary btn-lg">
+          Salvează și Intră în Joc
+        </button>
+        <button type="button" id="btn-setup-logout" class="btn btn-ghost">
+          Deconectare
+        </button>
+      </form>
+    </div>
+  </main>
+
   <!-- ECRAN 2: Meniu Principal (Create Room / Join Room) -->
   <main id="screen-menu" class="screen">
     <div class="menu-wrapper">
@@ -207,7 +245,7 @@
           <span class="suit-red">♥</span> RENTZ
         </div>
         <div class="user-pill">
-          <span class="user-pill-label">Cont:</span>
+          <span class="user-pill-label">Jucător:</span>
           <strong id="display-nickname">Jucător</strong>
           <button id="btn-logout" type="button" class="btn-link">Deconectare</button>
         </div>

@@ -11,6 +11,7 @@ const {
   isAuthConfigured,
   registerAccount,
   loginAccount,
+  setDisplayName,
   requestPasswordReset,
   verifyAccessToken,
 } = require('./auth');
@@ -53,7 +54,7 @@ app.post('/api/auth/register', async (req, res) => {
       redirectTo: req.body?.redirectTo || origin,
     });
     res.status(result.ok ? 200 : 400).json(result);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ ok: false, error: 'Eroare internă la înregistrare.' });
   }
 });
@@ -65,8 +66,22 @@ app.post('/api/auth/login', async (req, res) => {
       password: req.body?.password,
     });
     res.status(result.ok ? 200 : 401).json(result);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ ok: false, error: 'Eroare internă la autentificare.' });
+  }
+});
+
+app.post('/api/auth/display-name', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const result = await setDisplayName({
+      accessToken: token,
+      displayName: req.body?.displayName,
+    });
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (_err) {
+    res.status(500).json({ ok: false, error: 'Eroare internă la salvarea numelui de joc.' });
   }
 });
 
@@ -78,7 +93,7 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       redirectTo: req.body?.redirectTo || origin,
     });
     res.status(result.ok ? 200 : 400).json(result);
-  } catch (err) {
+  } catch (_err) {
     res.status(500).json({ ok: false, error: 'Eroare internă la resetarea parolei.' });
   }
 });
@@ -103,7 +118,7 @@ function broadcastRoomState(roomCode, notice = null) {
 
 io.on('connection', (socket) => {
   let playerId = null;
-  let verifiedUsername = null;
+  let verifiedDisplayName = null;
 
   socket.on('session:init', async (data = {}, ack) => {
     if (!isAuthConfigured()) {
@@ -116,7 +131,7 @@ io.on('connection', (socket) => {
     const verified = await verifyAccessToken(data.accessToken);
     if (!verified.ok) {
       playerId = null;
-      verifiedUsername = null;
+      verifiedDisplayName = null;
       if (typeof ack === 'function') {
         ack({ ok: false, authRequired: true, error: verified.error });
       }
@@ -124,9 +139,22 @@ io.on('connection', (socket) => {
     }
 
     playerId = verified.user.id;
-    verifiedUsername = verified.user.username;
+    verifiedDisplayName = verified.user.displayName;
 
-    const recon = roomManager.reconnectSession(playerId, socket.id, verifiedUsername);
+    // Dacă utilizatorul este la primul login și nu și-a ales încă numele din joc
+    if (verified.user.needsDisplayName || !verifiedDisplayName) {
+      if (typeof ack === 'function') {
+        ack({
+          ok: true,
+          user: verified.user,
+          needsDisplayName: true,
+          reconnected: false,
+        });
+      }
+      return;
+    }
+
+    const recon = roomManager.reconnectSession(playerId, socket.id, verifiedDisplayName);
     if (recon.ok && recon.room) {
       broadcastRoomState(recon.room.code);
       if (typeof ack === 'function') {
@@ -157,18 +185,18 @@ io.on('connection', (socket) => {
       }
     }
     playerId = null;
-    verifiedUsername = null;
+    verifiedDisplayName = null;
     if (typeof ack === 'function') ack({ ok: true });
   });
 
   socket.on('room:create', (_data = {}, ack) => {
-    if (!playerId || !verifiedUsername) {
+    if (!playerId || !verifiedDisplayName) {
       if (typeof ack === 'function') {
-        ack({ ok: false, error: 'Trebuie să fii autentificat în cont pentru a crea o cameră.' });
+        ack({ ok: false, error: 'Alege mai întâi numele tău de jucător.' });
       }
       return;
     }
-    const res = roomManager.createRoom(playerId, verifiedUsername, socket.id);
+    const res = roomManager.createRoom(playerId, verifiedDisplayName, socket.id);
     if (!res.ok) {
       if (typeof ack === 'function') ack({ ok: false, error: res.error });
       return;
@@ -183,13 +211,13 @@ io.on('connection', (socket) => {
   });
 
   socket.on('room:join', (data = {}, ack) => {
-    if (!playerId || !verifiedUsername) {
+    if (!playerId || !verifiedDisplayName) {
       if (typeof ack === 'function') {
-        ack({ ok: false, error: 'Trebuie să fii autentificat în cont pentru a intra într-o cameră.' });
+        ack({ ok: false, error: 'Alege mai întâi numele tău de jucător.' });
       }
       return;
     }
-    const res = roomManager.joinRoom(playerId, verifiedUsername, data.code, socket.id);
+    const res = roomManager.joinRoom(playerId, verifiedDisplayName, data.code, socket.id);
     if (!res.ok) {
       if (typeof ack === 'function') ack({ ok: false, error: res.error });
       return;

@@ -21,10 +21,16 @@ setInterval(() => {
 // Referințe DOM Ecrane
 const screens = {
   auth: document.getElementById('screen-auth'),
+  setupName: document.getElementById('screen-setup-name'),
   menu: document.getElementById('screen-menu'),
   lobby: document.getElementById('screen-lobby'),
   game: document.getElementById('screen-game'),
 };
+
+const formSetupName = document.getElementById('form-setup-name');
+const inputDisplayName = document.getElementById('input-display-name');
+const btnSubmitDisplayName = document.getElementById('btn-submit-display-name');
+const btnSetupLogout = document.getElementById('btn-setup-logout');
 
 // Referințe DOM Autentificare
 const authSetupBanner = document.getElementById('auth-setup-banner');
@@ -122,7 +128,7 @@ function switchAuthView(view) {
 }
 
 function syncMenuHeader() {
-  displayNickname.textContent = state.user?.username || 'Jucător';
+  displayNickname.textContent = state.user?.displayName || 'Jucător';
 }
 
 /* ==================== INIȚIALIZARE SUPABASE & SESIUNE ==================== */
@@ -210,6 +216,15 @@ function emitSessionInit() {
       return;
     }
     state.user = res.user;
+
+    // La primul login (când display_name nu a fost încă setat), cerem alegerea numelui de jucător
+    if (res.needsDisplayName || res.user?.needsDisplayName) {
+      inputDisplayName.value = '';
+      showScreen('setupName');
+      inputDisplayName.focus();
+      return;
+    }
+
     syncMenuHeader();
 
     if (res.reconnected && res.room) {
@@ -310,6 +325,9 @@ formRegister.addEventListener('submit', async (e) => {
       return;
     }
 
+    const createdUsername = regUsername.value.trim();
+    regUsername.value = '';
+    regEmail.value = '';
     regPassword.value = '';
     regPasswordConfirm.value = '';
 
@@ -318,23 +336,71 @@ formRegister.addEventListener('submit', async (e) => {
         'Cont creat! Verifică adresa de email pentru confirmare, apoi autentifică-te.',
         false
       );
-      loginIdentifier.value = regUsername.value.trim();
-      switchAuthView('login');
-      return;
+    } else {
+      showToast(
+        'Contul a fost creat cu succes! Autentifică-te acum pentru a-ți alege numele de jucător.',
+        false
+      );
     }
 
-    state.user = data.user;
-    showToast('Contul a fost creat cu succes! Bine ai venit!', false);
-    if (supabaseClient && data.session) {
-      await supabaseClient.auth.setSession(data.session);
-    }
-    connectAuthenticatedSocket(data.session.access_token);
+    loginIdentifier.value = createdUsername;
+    switchAuthView('login');
+    loginPassword.focus();
   } catch {
     showToast('Eroare de conexiune la înregistrare.', true);
   } finally {
     btnSubmitRegister.disabled = false;
   }
 });
+
+formSetupName.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const chosen = inputDisplayName.value.trim().replace(/\s+/g, ' ');
+  if (chosen.length < 2) {
+    showToast('Numele de jucător trebuie să aibă cel puțin 2 caractere.', true);
+    return;
+  }
+
+  btnSubmitDisplayName.disabled = true;
+  try {
+    const resp = await fetch('/api/auth/display-name', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+      body: JSON.stringify({ displayName: chosen }),
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      showToast(data.error || 'Nu s-a putut salva numele de jucător.', true);
+      return;
+    }
+
+    state.user = data.user;
+    showToast(`Numele tău de jucător (${data.user.displayName}) a fost salvat!`, false);
+    emitSessionInit();
+  } catch {
+    showToast('Eroare de conexiune la salvarea numelui.', true);
+  } finally {
+    btnSubmitDisplayName.disabled = false;
+  }
+});
+
+async function performLogout() {
+  socket.emit('session:logout', {}, async () => {
+    if (supabaseClient) {
+      await supabaseClient.auth.signOut();
+    }
+    state.user = null;
+    state.accessToken = '';
+    state.room = null;
+    showScreen('auth');
+    switchAuthView('login');
+  });
+}
+
+btnSetupLogout.addEventListener('click', performLogout);
 
 formForgot.addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -404,18 +470,7 @@ formResetPassword.addEventListener('submit', async (e) => {
   }
 });
 
-btnLogout.addEventListener('click', async () => {
-  socket.emit('session:logout', {}, async () => {
-    if (supabaseClient) {
-      await supabaseClient.auth.signOut();
-    }
-    state.user = null;
-    state.accessToken = '';
-    state.room = null;
-    showScreen('auth');
-    switchAuthView('login');
-  });
-});
+btnLogout.addEventListener('click', performLogout);
 
 /* ==================== ECRAN 2: MENIU CAMERE ==================== */
 
