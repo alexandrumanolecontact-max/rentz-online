@@ -15,7 +15,7 @@ class RentzGame {
    * @param {Array<{id: string, nickname: string}>} players
    * @param {() => void} onStateChange Callback apelat când starea jocului se modifică asincron (ex. după finalizarea levatei)
    */
-  constructor(players, onStateChange) {
+  constructor(players, onStateChange, onGameOver) {
     this.players = players.map((p, idx) => ({
       id: p.id,
       nickname: p.nickname,
@@ -23,6 +23,8 @@ class RentzGame {
     }));
     this.numPlayers = this.players.length;
     this.onStateChange = onStateChange || (() => {});
+    this.onGameOver = onGameOver || (() => {});
+    this.matchRecorded = false;
 
     this.minRank = RENTZ_RULES.getMinRank(this.numPlayers);
     this.centerRank = RENTZ_RULES.getCenterRank(this.numPlayers);
@@ -33,6 +35,10 @@ class RentzGame {
     this.scores = {};
     this.availableSubgames = {};
     this.seatMeta = {};
+    this.blindRoundsChosen = {};
+    this.blindNetPoints = {};
+    this.kingOfHeartsTakenCount = {};
+    this.tenOfClubsTakenCount = {};
     for (const p of this.players) {
       this.scores[p.id] = 0;
       this.availableSubgames[p.id] = SUBGAMES.map((s) => s.id);
@@ -41,6 +47,10 @@ class RentzGame {
         isAfk: false,
         consecutiveTimeouts: 0,
       };
+      this.blindRoundsChosen[p.id] = 0;
+      this.blindNetPoints[p.id] = 0;
+      this.kingOfHeartsTakenCount[p.id] = 0;
+      this.tenOfClubsTakenCount[p.id] = 0;
     }
 
     this.roundHistory = [];
@@ -872,6 +882,21 @@ class RentzGame {
       this.capturedCards[winnerId].push(c);
     }
 
+    // Contorizăm statisticile speciale pe cont (K♥ încasat / 10♣ luat în jocurile relevante)
+    const subId = this.currentSubgame?.id;
+    if (
+      (subId === 'king_of_hearts' || subId === 'totals_minus') &&
+      trickCards.some((c) => c.suit === 'hearts' && c.value === 13)
+    ) {
+      this.kingOfHeartsTakenCount[winnerId] = (this.kingOfHeartsTakenCount[winnerId] || 0) + 1;
+    }
+    if (
+      (subId === 'ten_of_clubs' || subId === 'totals_plus') &&
+      trickCards.some((c) => c.suit === 'clubs' && c.value === 10)
+    ) {
+      this.tenOfClubsTakenCount[winnerId] = (this.tenOfClubsTakenCount[winnerId] || 0) + 1;
+    }
+
     // Calculăm și aplicăm IMEDIAT punctele acestei mâini la scorul câștigătorului levatei
     const { total: trickPoints, breakdown } = this.calculateTrickPoints(trickCards);
     if (trickPoints !== 0) {
@@ -1193,6 +1218,13 @@ class RentzGame {
       totalsAfter[p.id] = this.scores[p.id];
     }
 
+    if (this.isBlind && this.chooserId) {
+      this.blindRoundsChosen[this.chooserId] =
+        (this.blindRoundsChosen[this.chooserId] || 0) + 1;
+      this.blindNetPoints[this.chooserId] =
+        (this.blindNetPoints[this.chooserId] || 0) + (deltas[this.chooserId] || 0);
+    }
+
     const chooser = this.getPlayerById(this.chooserId);
     const summary = {
       roundNumber: this.roundNumber,
@@ -1224,6 +1256,10 @@ class RentzGame {
       this.phase = 'game_over';
       this.currentTurnPlayerId = null;
       this.statusBanner = 'Toate rundele s-au încheiat! Clasament final:';
+      if (!this.matchRecorded) {
+        this.matchRecorded = true;
+        this.onGameOver(this.buildMatchEndSummary());
+      }
       return;
     }
 
@@ -1258,6 +1294,44 @@ class RentzGame {
       hasTenOfClubs: cards.some((c) => c.suit === 'clubs' && c.value === 10),
       queensCount: cards.filter((c) => c.value === 12).length,
       diamondsCount: cards.filter((c) => c.suit === 'diamonds').length,
+    };
+  }
+
+  buildMatchEndSummary() {
+    const standings = this.getStandings();
+    let currentPlace = 1;
+
+    const playersSummary = standings.map((st, idx) => {
+      if (idx > 0) {
+        const prev = standings[idx - 1];
+        const tied = prev.isZeroWinner === st.isZeroWinner && prev.score === st.score;
+        if (!tied) {
+          currentPlace = idx + 1;
+        }
+      }
+      return {
+        userId: st.id,
+        displayName: st.nickname,
+        place: currentPlace,
+        finalScore: st.score,
+        isWinner: currentPlace === 1,
+        isZeroWinner: Boolean(st.isZeroWinner),
+        wasBot: Boolean(this.seatMeta[st.id]?.isBot),
+        blindRoundsChosen: this.blindRoundsChosen[st.id] || 0,
+        blindNetPoints: this.blindNetPoints[st.id] || 0,
+        kingOfHeartsTaken: this.kingOfHeartsTakenCount[st.id] || 0,
+        tenOfClubsTaken: this.tenOfClubsTakenCount[st.id] || 0,
+      };
+    });
+
+    const top = playersSummary[0];
+    return {
+      numPlayers: this.numPlayers,
+      totalRounds: this.totalRounds,
+      winnerUserId: top ? top.userId : null,
+      winnerName: top ? top.displayName : '',
+      wonByZero: Boolean(top?.isZeroWinner),
+      players: playersSummary,
     };
   }
 

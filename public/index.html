@@ -247,7 +247,10 @@
         <div class="user-pill">
           <span class="user-pill-label">Jucător:</span>
           <strong id="display-nickname">Jucător</strong>
-          <button id="btn-open-account-settings" type="button" class="btn btn-sm btn-outline">
+          <button id="btn-open-profile-stats" type="button" class="btn btn-sm btn-outline">
+            📊 Profil &amp; Statistici
+          </button>
+          <button id="btn-open-account-settings" type="button" class="btn btn-sm btn-ghost">
             ⚙️ Setări Cont
           </button>
           <button id="btn-logout" type="button" class="btn-link">Deconectare</button>
@@ -382,6 +385,28 @@
       </footer>
     </div>
   </main>
+
+  <!-- MODAL: Profil, Statistici & Istoric Ultimele 20 Meciuri -->
+  <div id="modal-profile-stats" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="modal-card modal-xl">
+      <div class="modal-header">
+        <h3>📊 Profil &amp; Statistici — <span id="stats-player-title" class="gold-text">Jucător</span></h3>
+        <button type="button" class="btn-close" data-close-modal="modal-profile-stats">✕</button>
+      </div>
+      <div class="stats-tabs-bar">
+        <button type="button" class="stats-tab active" data-stats-tab="overview">
+          📊 Statistici &amp; Evoluție
+        </button>
+        <button type="button" class="stats-tab" data-stats-tab="history">
+          📜 Ultimele 20 Meciuri
+        </button>
+        <button type="button" class="stats-tab" data-stats-tab="leaderboard">
+          🏆 Clasament General
+        </button>
+      </div>
+      <div id="profile-stats-body" class="modal-body"></div>
+    </div>
+  </div>
 
   <!-- MODAL: Setări Cont -->
   <div id="modal-account-settings" class="modal-backdrop hidden" role="dialog" aria-modal="true">

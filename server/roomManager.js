@@ -9,11 +9,12 @@ class RoomManager {
   /**
    * @param {(roomCode: string) => void} onRoomUpdated Callback apelat când o cameră se modifică (inclusiv din timere asincrone)
    */
-  constructor(onRoomUpdated) {
+  constructor(onRoomUpdated, onMatchCompleted) {
     this.rooms = new Map(); // code -> room
     this.playerRoomMap = new Map(); // playerId -> roomCode
     this.disconnectTimers = new Map(); // playerId -> Timeout
     this.onRoomUpdated = onRoomUpdated || (() => {});
+    this.onMatchCompleted = onMatchCompleted || (() => {});
   }
 
   generateInviteCode() {
@@ -46,7 +47,7 @@ class RoomManager {
     return this.rooms.get(code) || null;
   }
 
-  createRoom(playerId, rawNickname, socketId) {
+  createRoom(playerId, rawNickname, socketId, accessToken = '') {
     const nickname = this.sanitizeNickname(rawNickname);
     if (nickname.length < 2) {
       return { ok: false, error: 'Nickname-ul trebuie să aibă cel puțin 2 caractere.' };
@@ -67,6 +68,7 @@ class RoomManager {
           id: playerId,
           nickname,
           socketId,
+          accessToken,
           ready: false,
           connected: true,
         },
@@ -80,7 +82,7 @@ class RoomManager {
     return { ok: true, room };
   }
 
-  joinRoom(playerId, rawNickname, rawCode, socketId) {
+  joinRoom(playerId, rawNickname, rawCode, socketId, accessToken = '') {
     const nickname = this.sanitizeNickname(rawNickname);
     if (nickname.length < 2) {
       return { ok: false, error: 'Nickname-ul trebuie să aibă cel puțin 2 caractere.' };
@@ -103,6 +105,7 @@ class RoomManager {
       existing.socketId = socketId;
       existing.connected = true;
       existing.nickname = nickname;
+      if (accessToken) existing.accessToken = accessToken;
       return { ok: true, room };
     }
 
@@ -127,6 +130,7 @@ class RoomManager {
       id: playerId,
       nickname,
       socketId,
+      accessToken,
       ready: false,
       connected: true,
     });
@@ -135,7 +139,7 @@ class RoomManager {
     return { ok: true, room };
   }
 
-  reconnectSession(playerId, socketId, rawNickname) {
+  reconnectSession(playerId, socketId, rawNickname, accessToken = '') {
     this.clearDisconnectTimer(playerId);
     const room = this.getRoomByPlayer(playerId);
     if (!room) {
@@ -150,6 +154,9 @@ class RoomManager {
 
     player.socketId = socketId;
     player.connected = true;
+    if (accessToken) {
+      player.accessToken = accessToken;
+    }
     const cleanNick = this.sanitizeNickname(rawNickname);
     if (cleanNick.length >= 2 && room.status === 'lobby') {
       const collision = room.players.some(
@@ -203,9 +210,15 @@ class RoomManager {
     if (room.game) {
       room.game.destroy();
     }
-    room.game = new RentzGame(room.players, () => {
-      this.onRoomUpdated(room.code);
-    });
+    room.game = new RentzGame(
+      room.players,
+      () => {
+        this.onRoomUpdated(room.code);
+      },
+      (matchSummary) => {
+        this.onMatchCompleted(room, matchSummary);
+      }
+    );
   }
 
   returnToLobby(playerId) {

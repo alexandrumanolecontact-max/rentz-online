@@ -542,6 +542,21 @@ async function runTests() {
   // Iar daca nimeni nu are 0 la final, castiga cel cu punctajul cel mai mare
   zeroWinGame.scores = { p1: 850, p2: 100, p3: 920, p4: -150 };
   assert.strictEqual(zeroWinGame.getStandings()[0].id, 'p3');
+
+  // Verificam si buildMatchEndSummary() folosit pentru istoricul meciurilor si statistici
+  zeroWinGame.scores = { p1: 600, p2: 0, p3: 600, p4: -200 };
+  zeroWinGame.blindRoundsChosen['p1'] = 3;
+  zeroWinGame.blindNetPoints['p1'] = 420;
+  zeroWinGame.kingOfHeartsTakenCount['p4'] = 2;
+  zeroWinGame.tenOfClubsTakenCount['p2'] = 1;
+  const matchEndSummary = zeroWinGame.buildMatchEndSummary();
+  assert.strictEqual(matchEndSummary.wonByZero, true);
+  assert.strictEqual(matchEndSummary.winnerUserId, 'p2');
+  assert.strictEqual(matchEndSummary.players[0].place, 1);
+  assert.strictEqual(matchEndSummary.players[0].isZeroWinner, true);
+  assert.strictEqual(matchEndSummary.players[1].place, 2);
+  assert.strictEqual(matchEndSummary.players[2].place, 2, 'Egalitatea la 600p primeste acelasi loc 2!');
+  assert.strictEqual(matchEndSummary.players[3].place, 4);
   zeroWinGame.destroy();
 
   console.log('11. Verificare server Express + Socket.IO si fisiere frontend...');

@@ -104,6 +104,10 @@ const myHandContainer = document.getElementById('my-hand');
 const modalScores = document.getElementById('modal-scores');
 const scoresModalBody = document.getElementById('scores-modal-body');
 const modalRules = document.getElementById('modal-rules');
+const modalProfileStats = document.getElementById('modal-profile-stats');
+const btnOpenProfileStats = document.getElementById('btn-open-profile-stats');
+const statsPlayerTitle = document.getElementById('stats-player-title');
+const profileStatsBody = document.getElementById('profile-stats-body');
 const modalAccountSettings = document.getElementById('modal-account-settings');
 const btnOpenAccountSettings = document.getElementById('btn-open-account-settings');
 const settingsAccountUsername = document.getElementById('settings-account-username');
@@ -1226,12 +1230,20 @@ function renderTableCenter(g, me) {
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
-      <button id="btn-back-lobby" type="button" class="btn btn-primary">
-        Înapoi în Lobby (Joc Nou)
-      </button>
+      <div style="display:flex; gap:10px; justify-content:center; flex-wrap:wrap">
+        <button id="btn-gameover-stats" type="button" class="btn btn-outline">
+          📊 Vezi Statistici
+        </button>
+        <button id="btn-back-lobby" type="button" class="btn btn-primary">
+          Înapoi în Lobby (Joc Nou)
+        </button>
+      </div>
     `;
 
     tableCenter.appendChild(panel);
+    document.getElementById('btn-gameover-stats')?.addEventListener('click', () => {
+      openProfileStatsModal();
+    });
     document.getElementById('btn-back-lobby')?.addEventListener('click', () => {
       socket.emit('room:return_to_lobby', {}, (res) => {
         if (res && !res.ok) showToast(res.error, true);
@@ -1389,9 +1401,310 @@ document.querySelectorAll('[data-close-modal]').forEach((btn) => {
   });
 });
 
-[modalScores, modalRules, modalAccountSettings].forEach((backdrop) => {
+[modalScores, modalRules, modalAccountSettings, modalProfileStats].forEach((backdrop) => {
   backdrop.addEventListener('click', (e) => {
     if (e.target === backdrop) backdrop.classList.add('hidden');
+  });
+});
+
+let cachedProfileStats = null;
+let activeStatsTab = 'overview';
+
+function buildEvolutionSvg(evolution) {
+  if (!evolution || evolution.length === 0) {
+    return `<p class="settings-hint">Joacă primul tău meci complet pentru a vedea graficul de evoluție a punctajului!</p>`;
+  }
+
+  const width = 760;
+  const height = 165;
+  const padX = 42;
+  const padY = 24;
+
+  const scores = evolution.map((e) => e.score);
+  const minVal = Math.min(0, ...scores);
+  const maxVal = Math.max(100, ...scores);
+  const span = Math.max(100, maxVal - minVal);
+
+  const toX = (idx) =>
+    evolution.length === 1
+      ? width / 2
+      : padX + (idx / (evolution.length - 1)) * (width - padX * 2);
+  const toY = (val) =>
+    height - padY - ((val - minVal) / span) * (height - padY * 2);
+
+  const zeroY = toY(0);
+  const pointsAttr = evolution.map((e, i) => `${toX(i).toFixed(1)},${toY(e.score).toFixed(1)}`).join(' ');
+
+  const circlesHtml = evolution
+    .map((e, i) => {
+      const cx = toX(i).toFixed(1);
+      const cy = toY(e.score).toFixed(1);
+      const fill = e.isWinner ? '#f7d683' : e.score >= 0 ? '#26b877' : '#e04856';
+      const dateShort = new Date(e.createdAt).toLocaleDateString('ro-RO', {
+        day: '2-digit',
+        month: '2-digit',
+      });
+      const tip = `Meci #${e.index} (${dateShort}) — Locul ${e.place} · ${formatSigned(e.score)} pct`;
+      return `
+        <g>
+          <title>${escapeHtml(tip)}</title>
+          <circle cx="${cx}" cy="${cy}" r="5" fill="${fill}" stroke="#091712" stroke-width="2" />
+          <text x="${cx}" y="${Math.max(13, cy - 9)}" text-anchor="middle" fill="#dce8e2" font-size="10" font-family="JetBrains Mono, monospace">${formatSigned(
+        e.score
+      )}</text>
+        </g>
+      `;
+    })
+    .join('');
+
+  return `
+    <svg viewBox="0 0 ${width} ${height}" class="evolution-svg" role="img" aria-label="Evoluție scoruri">
+      <line x1="${padX}" y1="${zeroY.toFixed(1)}" x2="${width - padX}" y2="${zeroY.toFixed(
+    1
+  )}" stroke="rgba(255,255,255,0.22)" stroke-dasharray="4 4" />
+      <text x="8" y="${(zeroY + 4).toFixed(
+        1
+      )}" fill="rgba(255,255,255,0.45)" font-size="10" font-family="JetBrains Mono, monospace">0p</text>
+      ${
+        evolution.length > 1
+          ? `<polyline fill="none" stroke="#eabf60" stroke-width="2.5" points="${pointsAttr}" />`
+          : ''
+      }
+      ${circlesHtml}
+    </svg>
+  `;
+}
+
+function renderProfileStatsTab() {
+  if (!cachedProfileStats) return;
+  const { overview: o, evolution, recentMatches, headToHead, leaderboard } = cachedProfileStats;
+
+  document.querySelectorAll('.stats-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-stats-tab') === activeStatsTab);
+  });
+
+  if (activeStatsTab === 'overview') {
+    const rivalsHtml =
+      headToHead && headToHead.length > 0
+        ? `<table class="summary-table" style="margin-bottom:0">
+            <thead>
+              <tr>
+                <th>Adversar frecvent</th>
+                <th>Meciuri comune</th>
+                <th>Palmares direct (Tu vs El)</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${headToHead
+                .map(
+                  (r) => `
+                <tr>
+                  <td><strong>${escapeHtml(r.displayName)}</strong></td>
+                  <td>${r.sharedMatches}</td>
+                  <td><span class="suit-black">${r.finishedAhead}W</span> – <span class="suit-red">${r.finishedBehind}L</span></td>
+                </tr>
+              `
+                )
+                .join('')}
+            </tbody>
+          </table>`
+        : `<p class="settings-hint">Palmaresul direct cu prietenii va apărea după primele meciuri finalizate împreună.</p>`;
+
+    profileStatsBody.innerHTML = `
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <span class="kpi-label">Meciuri Jucate</span>
+          <span class="kpi-value">${o.totalMatches}</span>
+          <span class="kpi-sub">Podium (Top 3): ${o.podiums}</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Locul 1 (Victorii)</span>
+          <span class="kpi-value gold">🏆 ${o.wins}</span>
+          <span class="kpi-sub">Rată de câștig: ${o.winRate}%</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Cel Mai Mare Scor</span>
+          <span class="kpi-value pos">${o.totalMatches ? formatSigned(o.bestScore) : '0'}p</span>
+          <span class="kpi-sub">Minim: ${o.totalMatches ? formatSigned(o.worstScore) : '0'}p</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Scor Mediu / Meci</span>
+          <span class="kpi-value ${o.avgScore >= 0 ? 'pos' : 'neg'}">${formatSigned(o.avgScore)}p</span>
+          <span class="kpi-sub">Total acumulat: ${formatSigned(o.totalScore)}p</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Serie Victorii</span>
+          <span class="kpi-value gold">🔥 ${o.currentWinStreak}</span>
+          <span class="kpi-sub">Record serie: ${o.bestWinStreak} la rând</span>
+        </div>
+        <div class="kpi-card">
+          <span class="kpi-label">Victorii cu „0 Exact!”</span>
+          <span class="kpi-value gold">🎯 ${o.zeroWins}</span>
+          <span class="kpi-sub">Regula specială de 0 puncte</span>
+        </div>
+      </div>
+
+      <div class="evolution-card">
+        <div class="settings-title-row">
+          <h4 class="settings-section-title">📈 Evoluția Scorului (Ultimele ${evolution.length} meciuri)</h4>
+          <span class="kpi-sub">Treci cu mouse-ul peste puncte pentru detalii</span>
+        </div>
+        ${buildEvolutionSvg(evolution)}
+      </div>
+
+      <div class="fun-stats-grid">
+        <div class="settings-section">
+          <h4 class="settings-section-title">🎲 Curaj „Pe Nevăzute (×2)”</h4>
+          <p class="settings-hint">
+            Ai ales <strong>${o.blindRoundsChosen}</strong> runde Pe Nevăzute, cu un bilanț net în acele runde de
+            <strong>${formatSigned(o.blindNetPoints)} pct</strong>.
+          </p>
+        </div>
+        <div class="settings-section">
+          <h4 class="settings-section-title">🃏 Cărți Speciale (K♥ vs 10♣)</h4>
+          <p class="settings-hint">
+            🍀 <strong>10♣</strong> câștigați: <strong>${o.tenOfClubsTaken}</strong> &nbsp;·&nbsp;
+            👑 <strong>K♥</strong> încasați: <strong>${o.kingOfHeartsTaken}</strong>
+          </p>
+        </div>
+      </div>
+
+      <div class="settings-section">
+        <h4 class="settings-section-title">⚔️ Palmares Direct cu Prietenii</h4>
+        ${rivalsHtml}
+      </div>
+    `;
+    return;
+  }
+
+  if (activeStatsTab === 'history') {
+    if (!recentMatches || recentMatches.length === 0) {
+      profileStatsBody.innerHTML = `<p class="settings-hint">Nu ai încă niciun meci finalizat în istoric. Ultimele 20 de partide vor apărea automat aici!</p>`;
+      return;
+    }
+
+    const medals = ['🥇', '🥈', '🥉'];
+    const cardsHtml = recentMatches
+      .map((m) => {
+        const dt = new Date(m.createdAt).toLocaleString('ro-RO', {
+          day: '2-digit',
+          month: '2-digit',
+          year: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const myMedal = m.myPlace ? medals[m.myPlace - 1] || `#${m.myPlace}` : '-';
+        const zeroTag = m.myIsZeroWinner
+          ? ' <span class="mini-chip turn-chip">🎯 0 Exact!</span>'
+          : '';
+        const myScoreClass = m.myScore >= 0 ? 'pos' : 'neg';
+
+        const pillsHtml = m.players
+          .map((pl) => {
+            const pm = medals[pl.place - 1] || `${pl.place}.`;
+            const z = pl.isZeroWinner ? ' 🎯' : '';
+            const b = pl.wasBot ? ' 🤖' : '';
+            return `<span class="match-player-pill${pl.isMe ? ' me' : ''}">${pm} <strong>${escapeHtml(
+              pl.displayName
+            )}</strong>: ${formatSigned(pl.finalScore)}p${z}${b}</span>`;
+          })
+          .join('');
+
+        return `
+          <div class="match-history-card${m.myIsWinner ? ' won' : ''}">
+            <div class="match-history-top">
+              <div>
+                <strong>${myMedal} Locul ${m.myPlace || '-'}</strong>${zeroTag}
+                &nbsp;·&nbsp;
+                <span class="seat-score ${myScoreClass}">${formatSigned(m.myScore)} pct</span>
+              </div>
+              <span class="match-history-meta">${dt} · ${m.numPlayers} jucători (${m.totalRounds} runde)</span>
+            </div>
+            <div class="match-players-pills">${pillsHtml}</div>
+          </div>
+        `;
+      })
+      .join('');
+
+    profileStatsBody.innerHTML = `<div class="match-history-list">${cardsHtml}</div>`;
+    return;
+  }
+
+  if (activeStatsTab === 'leaderboard') {
+    if (!leaderboard || leaderboard.length === 0) {
+      profileStatsBody.innerHTML = `<p class="settings-hint">Clasamentul general se va popula automat după primul meci încheiat!</p>`;
+      return;
+    }
+
+    const medals = ['🥇', '🥈', '🥉'];
+    const rowsHtml = leaderboard
+      .map((item, idx) => {
+        const medal = medals[idx] || `${idx + 1}.`;
+        return `
+          <tr>
+            <td>${medal} <strong>${escapeHtml(item.displayName)}</strong>${
+          item.isMe ? ' <span class="tag-badge">Tu</span>' : ''
+        }</td>
+            <td style="text-align:right"><strong>${item.wins}</strong> (${item.winRate}%) &nbsp;·&nbsp; ${
+          item.matches
+        } meciuri</td>
+            <td><strong>${formatSigned(item.totalScore)}p</strong> <span class="kpi-sub">(max ${formatSigned(
+          item.bestScore
+        )}p)</span></td>
+          </tr>
+        `;
+      })
+      .join('');
+
+    profileStatsBody.innerHTML = `
+      <table class="summary-table">
+        <thead>
+          <tr>
+            <th>Jucător</th>
+            <th>Victorii / Meciuri</th>
+            <th>Puncte Totale (Record)</th>
+          </tr>
+        </thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    `;
+  }
+}
+
+async function openProfileStatsModal(defaultTab = 'overview') {
+  activeStatsTab = defaultTab;
+  statsPlayerTitle.textContent = state.user?.displayName || 'Jucător';
+  profileStatsBody.innerHTML = `<p class="settings-hint">Se încarcă statisticile profilului...</p>`;
+  modalProfileStats.classList.remove('hidden');
+
+  try {
+    const resp = await fetch('/api/stats/me', {
+      headers: {
+        Authorization: `Bearer ${state.accessToken}`,
+      },
+    });
+    const data = await resp.json();
+    if (!data.ok) {
+      profileStatsBody.innerHTML = `<p class="settings-hint">${escapeHtml(
+        data.error || 'Nu s-au putut încărca statisticile.'
+      )}</p>`;
+      return;
+    }
+    cachedProfileStats = data;
+    renderProfileStatsTab();
+  } catch {
+    profileStatsBody.innerHTML = `<p class="settings-hint">Eroare de conexiune la încărcarea statisticilor.</p>`;
+  }
+}
+
+btnOpenProfileStats.addEventListener('click', () => {
+  openProfileStatsModal('overview');
+});
+
+document.querySelectorAll('.stats-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    activeStatsTab = btn.getAttribute('data-stats-tab') || 'overview';
+    renderProfileStatsTab();
   });
 });
 

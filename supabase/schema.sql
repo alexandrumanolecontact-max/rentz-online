@@ -119,3 +119,137 @@ revoke all on function public.get_email_for_login(text) from public;
 grant execute on function public.get_email_for_login(text) to anon, authenticated;
 
 notify pgrst, 'reload schema';
+
+
+-- 5. Istoric Meciuri & Statistici Jucatori
+create table if not exists public.matches (
+  id uuid primary key default gen_random_uuid(),
+  room_code text not null,
+  num_players smallint not null check (num_players between 3 and 6),
+  total_rounds smallint not null,
+  winner_user_id uuid references public.profiles(id) on delete set null,
+  winner_name text not null,
+  won_by_zero boolean not null default false,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.match_players (
+  id bigint generated always as identity primary key,
+  match_id uuid not null references public.matches(id) on delete cascade,
+  user_id uuid references public.profiles(id) on delete set null,
+  display_name text not null,
+  place smallint not null check (place between 1 and 6),
+  final_score integer not null,
+  is_winner boolean not null default false,
+  is_zero_winner boolean not null default false,
+  was_bot boolean not null default false,
+  blind_rounds_chosen smallint not null default 0,
+  blind_net_points integer not null default 0,
+  king_of_hearts_taken smallint not null default 0,
+  ten_of_clubs_taken smallint not null default 0,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_matches_created_at on public.matches (created_at desc);
+create index if not exists idx_matches_winner_user_id on public.matches (winner_user_id);
+create index if not exists idx_match_players_match_id on public.match_players (match_id);
+create index if not exists idx_match_players_user_created on public.match_players (user_id, created_at desc);
+
+alter table public.matches enable row level security;
+alter table public.match_players enable row level security;
+
+revoke all on table public.matches from public, anon;
+revoke all on table public.match_players from public, anon;
+grant select, insert on table public.matches to authenticated;
+grant select, insert on table public.match_players to authenticated;
+
+drop policy if exists "Utilizatorii autentificati pot citi meciurile" on public.matches;
+create policy "Utilizatorii autentificati pot citi meciurile"
+  on public.matches for select to authenticated
+  using ((select auth.uid()) is not null);
+
+drop policy if exists "Participantii pot inregistra meciuri" on public.matches;
+create policy "Participantii pot inregistra meciuri"
+  on public.matches for insert to authenticated
+  with check ((select auth.uid()) is not null);
+
+drop policy if exists "Utilizatorii autentificati pot citi participantii" on public.match_players;
+create policy "Utilizatorii autentificati pot citi participantii"
+  on public.match_players for select to authenticated
+  using ((select auth.uid()) is not null);
+
+drop policy if exists "Participantii pot inregistra rezultatele meciului" on public.match_players;
+create policy "Participantii pot inregistra rezultatele meciului"
+  on public.match_players for insert to authenticated
+  with check ((select auth.uid()) is not null);
+
+create or replace function public.record_completed_match(
+  p_room_code text,
+  p_num_players smallint,
+  p_total_rounds smallint,
+  p_winner_user_id uuid,
+  p_winner_name text,
+  p_won_by_zero boolean,
+  p_players jsonb
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_caller uuid := (select auth.uid());
+  v_match_id uuid;
+  v_item jsonb;
+begin
+  if v_caller is null then
+    raise exception 'UNAUTHORIZED';
+  end if;
+
+  if not exists (
+    select 1
+    from jsonb_array_elements(p_players) as elem
+    where (elem->>'user_id')::uuid = v_caller
+  ) then
+    raise exception 'NOT_MATCH_PARTICIPANT';
+  end if;
+
+  insert into public.matches (
+    room_code, num_players, total_rounds, winner_user_id, winner_name, won_by_zero
+  )
+  values (
+    p_room_code, p_num_players, p_total_rounds, p_winner_user_id, p_winner_name, coalesce(p_won_by_zero, false)
+  )
+  returning id into v_match_id;
+
+  for v_item in select * from jsonb_array_elements(p_players)
+  loop
+    insert into public.match_players (
+      match_id, user_id, display_name, place, final_score,
+      is_winner, is_zero_winner, was_bot,
+      blind_rounds_chosen, blind_net_points, king_of_hearts_taken, ten_of_clubs_taken
+    )
+    values (
+      v_match_id,
+      nullif(v_item->>'user_id', '')::uuid,
+      coalesce(v_item->>'display_name', 'Jucător'),
+      (v_item->>'place')::smallint,
+      (v_item->>'final_score')::integer,
+      coalesce((v_item->>'is_winner')::boolean, false),
+      coalesce((v_item->>'is_zero_winner')::boolean, false),
+      coalesce((v_item->>'was_bot')::boolean, false),
+      coalesce((v_item->>'blind_rounds_chosen')::smallint, 0),
+      coalesce((v_item->>'blind_net_points')::integer, 0),
+      coalesce((v_item->>'king_of_hearts_taken')::smallint, 0),
+      coalesce((v_item->>'ten_of_clubs_taken')::smallint, 0)
+    );
+  end loop;
+
+  return v_match_id;
+end;
+$$;
+
+revoke all on function public.record_completed_match(text, smallint, smallint, uuid, text, boolean, jsonb) from public, anon;
+grant execute on function public.record_completed_match(text, smallint, smallint, uuid, text, boolean, jsonb) to authenticated;
+
+notify pgrst, 'reload schema';

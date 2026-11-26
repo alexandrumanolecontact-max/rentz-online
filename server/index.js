@@ -5,6 +5,7 @@ const http = require('http');
 const express = require('express');
 const { Server } = require('socket.io');
 const { RoomManager } = require('./roomManager');
+const { saveCompletedMatch, getProfileStats } = require('./stats');
 const {
   SUPABASE_URL,
   SUPABASE_ANON_KEY,
@@ -98,9 +99,27 @@ app.post('/api/auth/forgot-password', async (req, res) => {
   }
 });
 
-const roomManager = new RoomManager((roomCode) => {
-  broadcastRoomState(roomCode);
+app.get('/api/stats/me', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const result = await getProfileStats({ accessToken: token });
+    res.status(result.ok ? 200 : 401).json(result);
+  } catch (_err) {
+    res.status(500).json({ ok: false, error: 'Eroare internă la încărcarea statisticilor.' });
+  }
 });
+
+const roomManager = new RoomManager(
+  (roomCode) => {
+    broadcastRoomState(roomCode);
+  },
+  (room, matchSummary) => {
+    saveCompletedMatch(room, matchSummary).catch((err) => {
+      console.error('Eroare la salvarea meciului in istoric:', err?.message || err);
+    });
+  }
+);
 
 function broadcastRoomState(roomCode, notice = null) {
   const room = roomManager.rooms.get(roomCode);
@@ -119,6 +138,7 @@ function broadcastRoomState(roomCode, notice = null) {
 io.on('connection', (socket) => {
   let playerId = null;
   let verifiedDisplayName = null;
+  let latestAccessToken = '';
 
   socket.on('session:init', async (data = {}, ack) => {
     if (!isAuthConfigured()) {
@@ -132,6 +152,7 @@ io.on('connection', (socket) => {
     if (!verified.ok) {
       playerId = null;
       verifiedDisplayName = null;
+      latestAccessToken = '';
       if (typeof ack === 'function') {
         ack({ ok: false, authRequired: true, error: verified.error });
       }
@@ -140,6 +161,7 @@ io.on('connection', (socket) => {
 
     playerId = verified.user.id;
     verifiedDisplayName = verified.user.displayName;
+    latestAccessToken = data.accessToken;
 
     // Dacă utilizatorul este la primul login și nu și-a ales încă numele din joc
     if (verified.user.needsDisplayName || !verifiedDisplayName) {
@@ -154,7 +176,12 @@ io.on('connection', (socket) => {
       return;
     }
 
-    const recon = roomManager.reconnectSession(playerId, socket.id, verifiedDisplayName);
+    const recon = roomManager.reconnectSession(
+      playerId,
+      socket.id,
+      verifiedDisplayName,
+      latestAccessToken
+    );
     if (recon.ok && recon.room) {
       broadcastRoomState(recon.room.code);
       if (typeof ack === 'function') {
@@ -196,7 +223,7 @@ io.on('connection', (socket) => {
       }
       return;
     }
-    const res = roomManager.createRoom(playerId, verifiedDisplayName, socket.id);
+    const res = roomManager.createRoom(playerId, verifiedDisplayName, socket.id, latestAccessToken);
     if (!res.ok) {
       if (typeof ack === 'function') ack({ ok: false, error: res.error });
       return;
@@ -217,7 +244,13 @@ io.on('connection', (socket) => {
       }
       return;
     }
-    const res = roomManager.joinRoom(playerId, verifiedDisplayName, data.code, socket.id);
+    const res = roomManager.joinRoom(
+      playerId,
+      verifiedDisplayName,
+      data.code,
+      socket.id,
+      latestAccessToken
+    );
     if (!res.ok) {
       if (typeof ack === 'function') ack({ ok: false, error: res.error });
       return;
