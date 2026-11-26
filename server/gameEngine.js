@@ -41,8 +41,11 @@ class RentzGame {
     this.pendingTimer = null;
 
     // Stare curentă de rundă
-    this.phase = 'choosing_subgame';
+    this.phase = 'deciding_blind';
     this.chooserId = this.players[0].id;
+    this.isBlind = false;
+    this.scoreMultiplier = 1;
+    this.cardsRevealed = false;
     this.currentSubgame = null;
     this.hands = {};
     this.tricksWon = {};
@@ -119,6 +122,9 @@ class RentzGame {
     });
 
     this.currentSubgame = null;
+    this.isBlind = false;
+    this.scoreMultiplier = 1;
+    this.cardsRevealed = false;
     this.trickNumber = 1;
     this.leadPlayerId = this.chooserId;
     this.currentTurnPlayerId = this.chooserId;
@@ -130,8 +136,31 @@ class RentzGame {
     this.rentzLastAction = '';
     this.summaryContinueSet.clear();
 
+    this.phase = 'deciding_blind';
+    this.statusBanner = `${chooser.nickname} alege modul rundei: Pe Văzute (×1) sau Pe Nevăzute (×2)...`;
+  }
+
+  chooseBlindMode(playerId, blind) {
+    if (this.phase !== 'deciding_blind') {
+      return { ok: false, error: 'Modul rundei a fost deja ales.' };
+    }
+    if (playerId !== this.chooserId) {
+      return { ok: false, error: 'Nu este rândul tău să alegi modul rundei.' };
+    }
+
+    const chooser = this.getPlayerById(playerId);
+    this.isBlind = Boolean(blind);
+    this.scoreMultiplier = this.isBlind ? 2 : 1;
+    this.cardsRevealed = !this.isBlind;
     this.phase = 'choosing_subgame';
-    this.statusBanner = `${chooser.nickname} își privește cărțile și alege sub-jocul...`;
+
+    if (this.isBlind) {
+      this.statusBanner = `🔥 ${chooser.nickname} joacă PE NEVĂZUTE (Punctaj Dublu ×2) și alege sub-jocul!`;
+    } else {
+      this.statusBanner = `${chooser.nickname} joacă Pe Văzute (×1) — își privește cărțile și alege sub-jocul...`;
+    }
+
+    return { ok: true };
   }
 
   chooseSubgame(playerId, subgameId) {
@@ -154,7 +183,9 @@ class RentzGame {
 
     this.availableSubgames[playerId] = available.filter((id) => id !== subgameId);
     this.currentSubgame = subgame;
+    this.cardsRevealed = true;
     const chooser = this.getPlayerById(playerId);
+    const blindTag = this.isBlind ? ' PE NEVĂZUTE (×2)' : '';
 
     if (subgame.mode === 'rentz') {
       this.phase = 'playing_rentz';
@@ -167,7 +198,7 @@ class RentzGame {
       this.rentzFinishOrder = [];
       this.currentTurnPlayerId = this.chooserId;
       const centerLabel = RANK_LABELS[this.centerRank];
-      this.rentzLastAction = `${chooser.nickname} a ales Rentz! Fiecare culoare se deschide cu ${centerLabel}.`;
+      this.rentzLastAction = `${chooser.nickname} a ales Rentz${blindTag}! Fiecare culoare se deschide cu ${centerLabel}.`;
       this.statusBanner = this.rentzLastAction;
     } else {
       this.phase = 'playing_tricks';
@@ -175,7 +206,7 @@ class RentzGame {
       this.leadPlayerId = this.chooserId;
       this.currentTurnPlayerId = this.chooserId;
       this.currentTrick = [];
-      this.statusBanner = `${chooser.nickname} a ales ${subgame.name}. ${chooser.nickname} deschide mâna!`;
+      this.statusBanner = `${chooser.nickname} a ales ${subgame.name}${blindTag}. ${chooser.nickname} deschide mâna!`;
     }
 
     return { ok: true };
@@ -497,12 +528,15 @@ class RentzGame {
     return { ok: true };
   }
 
-  finishRound(deltas, reason) {
+  finishRound(baseDeltas, reason) {
     this.clearPendingTimer();
 
+    const deltas = {};
     const totalsAfter = {};
     for (const p of this.players) {
-      const delta = deltas[p.id] || 0;
+      const rawDelta = (baseDeltas[p.id] || 0) * this.scoreMultiplier;
+      const delta = rawDelta === 0 ? 0 : rawDelta;
+      deltas[p.id] = delta;
       this.scores[p.id] += delta;
       totalsAfter[p.id] = this.scores[p.id];
     }
@@ -516,6 +550,8 @@ class RentzGame {
       subgameId: this.currentSubgame.id,
       subgameName: this.currentSubgame.name,
       subgameBadge: this.currentSubgame.badge,
+      isBlind: this.isBlind,
+      scoreMultiplier: this.scoreMultiplier,
       reason,
       deltas,
       totalsAfter,
@@ -590,11 +626,16 @@ class RentzGame {
       this.currentTurnPlayerId === viewerId &&
       playableCardIds.length === 0;
 
+    const viewerHand = this.hands[viewerId] || [];
+
     return {
       phase: this.phase,
       roundNumber: this.roundNumber,
       totalRounds: this.totalRounds,
       chooserId: this.chooserId,
+      isBlind: this.isBlind,
+      scoreMultiplier: this.scoreMultiplier,
+      cardsRevealed: this.cardsRevealed,
       leadPlayerId: this.leadPlayerId,
       currentTurnPlayerId: this.currentTurnPlayerId,
       trickNumber: this.trickNumber,
@@ -607,7 +648,8 @@ class RentzGame {
       centerRank: this.centerRank,
       centerRankLabel: RANK_LABELS[this.centerRank],
       suitsOrder: SUITS,
-      myHand: this.hands[viewerId] || [],
+      myHand: this.cardsRevealed ? viewerHand : [],
+      hiddenHandCount: this.cardsRevealed ? 0 : viewerHand.length,
       playableCardIds,
       canPassRentz,
       currentTrick: this.currentTrick,

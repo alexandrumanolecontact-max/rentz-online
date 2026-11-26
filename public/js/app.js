@@ -1,4 +1,10 @@
-import { createCardElement, getRankLabel, getSuitSymbol, isRedSuit } from './cards.js';
+import {
+  createCardElement,
+  createFaceDownCardElement,
+  getRankLabel,
+  getSuitSymbol,
+  isRedSuit,
+} from './cards.js';
 
 const state = {
   user: null, // { id, username, email }
@@ -78,6 +84,7 @@ const btnToggleReady = document.getElementById('btn-toggle-ready');
 
 const hudRound = document.getElementById('hud-round');
 const hudSubgame = document.getElementById('hud-subgame');
+const hudBlind = document.getElementById('hud-blind');
 const hudBanner = document.getElementById('hud-banner');
 const opponentsRing = document.getElementById('opponents-ring');
 const tableCenter = document.getElementById('table-center');
@@ -676,10 +683,14 @@ function renderGame(room) {
     hudSubgame.className = `hud-pill hud-subgame ${
       g.currentSubgame.type === 'negative' ? 'neg' : 'pos'
     }`;
+  } else if (g.phase === 'deciding_blind') {
+    hudSubgame.textContent = 'Pe Văzute / Pe Nevăzute...';
+    hudSubgame.className = 'hud-pill hud-subgame';
   } else {
     hudSubgame.textContent = 'Alegere sub-joc...';
     hudSubgame.className = 'hud-pill hud-subgame';
   }
+  hudBlind.classList.toggle('hidden', !g.isBlind);
   hudBanner.textContent = g.statusBanner || '';
 
   const rotated = getRotatedPlayers(g.players, myId);
@@ -742,15 +753,87 @@ function renderGame(room) {
   renderMyHand(g);
 }
 
+function scaleSubgameDesc(shortDesc, multiplier) {
+  if (multiplier <= 1) return shortDesc;
+  return shortDesc.replace(/([+-]?\d+)/g, (match, numStr, offset, full) => {
+    // Nu dublăm cifrele care fac parte din numele cărții/locului (ex. "10♣", "Loc 1", "Loc 2", "Loc 3")
+    const after = full.slice(offset + match.length);
+    const before = full.slice(Math.max(0, offset - 4), offset);
+    if (after.startsWith('♣') || before.endsWith('Loc ')) {
+      return match;
+    }
+    const n = parseInt(numStr, 10);
+    const doubled = n * multiplier;
+    return match.startsWith('+') ? `+${doubled}` : String(doubled);
+  });
+}
+
 function renderTableCenter(g, me) {
   const myId = state.user?.id;
   tableCenter.innerHTML = '';
+
+  if (g.phase === 'deciding_blind') {
+    if (g.chooserId === myId && me) {
+      const box = document.createElement('div');
+      box.className = 'blind-mode-picker';
+      const remainingChips = g.subgamesCatalog
+        .filter((s) => me.availableSubgames.includes(s.id))
+        .map((s) => `<span class="mini-chip">${escapeHtml(s.badge)} ${escapeHtml(s.name)}</span>`)
+        .join('');
+
+      box.innerHTML = `
+        <div class="picker-title">Este rândul tău să alegi! Cum vrei să joci runda?</div>
+        <p class="subgame-desc">Jocurile tale rămase disponibile:</p>
+        <div class="avail-chips" style="margin-bottom: 12px">${remainingChips}</div>
+        <div class="blind-mode-grid">
+          <button type="button" id="btn-choose-seen" class="blind-choice-btn">
+            <span class="blind-choice-title">👁️ Pe Văzute (×1)</span>
+            <span class="blind-choice-desc">Îți vezi mai întâi cele 8 cărți, apoi alegi jocul la punctaj normal.</span>
+          </button>
+          <button type="button" id="btn-choose-blind" class="blind-choice-btn blind-double">
+            <span class="blind-choice-title">🔥 Pe Nevăzute (×2)</span>
+            <span class="blind-choice-desc">Alegi mai întâi jocul fără să îți vezi cărțile — punctajul se dublează!</span>
+          </button>
+        </div>
+      `;
+      tableCenter.appendChild(box);
+
+      document.getElementById('btn-choose-seen')?.addEventListener('click', () => {
+        socket.emit('game:choose_blind_mode', { blind: false }, (res) => {
+          if (res && !res.ok) showToast(res.error, true);
+        });
+      });
+      document.getElementById('btn-choose-blind')?.addEventListener('click', () => {
+        socket.emit('game:choose_blind_mode', { blind: true }, (res) => {
+          if (res && !res.ok) showToast(res.error, true);
+        });
+      });
+    } else {
+      const chooser = g.players.find((p) => p.id === g.chooserId);
+      const box = document.createElement('div');
+      box.className = 'waiting-chooser-box';
+      const remainingNames = g.subgamesCatalog
+        .filter((s) => chooser?.availableSubgames.includes(s.id))
+        .map((s) => `<span class="mini-chip">${escapeHtml(s.badge)} ${escapeHtml(s.name)}</span>`)
+        .join('');
+      box.innerHTML = `
+        <h3>${escapeHtml(chooser?.nickname || 'Jucătorul')} decide modul rundei...</h3>
+        <p class="subgame-desc">Alege între <strong>Pe Văzute (×1)</strong> și <strong>Pe Nevăzute (×2)</strong>.</p>
+        <div class="avail-chips">${remainingNames}</div>
+      `;
+      tableCenter.appendChild(box);
+    }
+    return;
+  }
 
   if (g.phase === 'choosing_subgame') {
     if (g.chooserId === myId && me) {
       const box = document.createElement('div');
       box.className = 'subgame-picker';
-      box.innerHTML = `<div class="picker-title">Privește-ți cărțile de jos și alege sub-jocul rundei:</div>`;
+      const pickerHeading = g.isBlind
+        ? '🔥 PE NEVĂZUTE (Punctaj Dublu ×2) — Alege sub-jocul înainte să îți vezi cărțile:'
+        : 'Privește-ți cărțile de jos și alege sub-jocul rundei (×1):';
+      box.innerHTML = `<div class="picker-title">${pickerHeading}</div>`;
       const grid = document.createElement('div');
       grid.className = 'subgame-grid';
 
@@ -760,14 +843,15 @@ function renderTableCenter(g, me) {
         btn.type = 'button';
         btn.className = `subgame-btn ${sub.type}`;
         btn.disabled = !available;
+        const descText = available
+          ? scaleSubgameDesc(sub.shortDesc, g.scoreMultiplier || 1)
+          : 'Deja ales de tine';
         btn.innerHTML = `
           <div class="subgame-btn-top">
             <span>${escapeHtml(sub.name)}</span>
             <span class="subgame-badge">${available ? escapeHtml(sub.badge) : '✓'}</span>
           </div>
-          <div class="subgame-desc">${
-            available ? escapeHtml(sub.shortDesc) : 'Deja ales de tine'
-          }</div>
+          <div class="subgame-desc">${escapeHtml(descText)}</div>
         `;
         if (available) {
           btn.addEventListener('click', () => {
@@ -789,8 +873,9 @@ function renderTableCenter(g, me) {
         .filter((s) => chooser?.availableSubgames.includes(s.id))
         .map((s) => `<span class="mini-chip">${escapeHtml(s.badge)} ${escapeHtml(s.name)}</span>`)
         .join('');
+      const modeTag = g.isBlind ? '🔥 PE NEVĂZUTE (×2)' : 'Pe Văzute (×1)';
       box.innerHTML = `
-        <h3>${escapeHtml(chooser?.nickname || 'Jucătorul')} alege sub-jocul...</h3>
+        <h3>${escapeHtml(chooser?.nickname || 'Jucătorul')} alege sub-jocul (${modeTag})...</h3>
         <p class="subgame-desc">Sub-jocuri disponibile pentru ${escapeHtml(
           chooser?.nickname || ''
         )}:</p>
@@ -909,8 +994,9 @@ function renderTableCenter(g, me) {
     const continuedCount = g.players.filter((p) => p.continuedSummary).length;
     const iContinued = me?.continuedSummary;
 
+    const blindBadge = s.isBlind ? ' 🔥 (Pe Nevăzute ×2)' : '';
     panel.innerHTML = `
-      <h3>Runda ${s.roundNumber} încheiată — ${escapeHtml(s.subgameName)}</h3>
+      <h3>Runda ${s.roundNumber} încheiată — ${escapeHtml(s.subgameName)}${blindBadge}</h3>
       <p class="summary-reason">${escapeHtml(s.reason)}</p>
       <table class="summary-table">
         <thead>
@@ -991,6 +1077,15 @@ function renderTableCenter(g, me) {
 
 function renderMyHand(g) {
   myHandContainer.innerHTML = '';
+
+  // Dacă suntem înainte de dezvăluirea cărților (alegere Pe Văzute / Pe Nevăzute), afișăm cărțile cu fața în jos
+  if (!g.cardsRevealed && g.hiddenHandCount > 0) {
+    for (let i = 0; i < g.hiddenHandCount; i++) {
+      myHandContainer.appendChild(createFaceDownCardElement());
+    }
+    return;
+  }
+
   const isActionPhase = g.phase === 'playing_tricks' || g.phase === 'playing_rentz';
   const isMyTurn = g.currentTurnPlayerId === state.user?.id;
   const playableSet = new Set(g.playableCardIds || []);
@@ -1047,9 +1142,10 @@ function renderScoresModal(g) {
       const perPlayer = g.players
         .map((p) => `${escapeHtml(p.nickname)}: ${formatSigned(h.deltas[p.id] || 0)}`)
         .join(' · ');
+      const blindLabel = h.isBlind ? ' <span class="mini-chip turn-chip">×2</span>' : '';
       return `
         <tr>
-          <td>#${h.roundNumber} — <strong>${escapeHtml(h.subgameName)}</strong> (${escapeHtml(
+          <td>#${h.roundNumber} — <strong>${escapeHtml(h.subgameName)}</strong>${blindLabel} (${escapeHtml(
         h.chooserName
       )})</td>
           <td colspan="2" style="text-align:right; font-size:0.82rem">${perPlayer}</td>

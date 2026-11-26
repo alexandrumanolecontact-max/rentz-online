@@ -58,3 +58,10 @@ export function createCardElement(card, { playable = false, disabled = false, on
 
   return el;
 }
+
+export function createFaceDownCardElement() {
+  const el = document.createElement('div');
+  el.className = 'playing-card card-back';
+  el.innerHTML = `<div class="card-back-pattern"><span>R</span></div>`;
+  return el;
+}

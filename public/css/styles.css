@@ -691,6 +691,13 @@ body {
   color: #7bf5b8;
 }
 
+.hud-blind-pill {
+  background: linear-gradient(135deg, rgba(242, 169, 59, 0.28), rgba(224, 72, 86, 0.25));
+  border-color: rgba(247, 214, 131, 0.7);
+  color: var(--gold-bright);
+  font-weight: 800;
+}
+
 .hud-banner {
   font-size: 0.96rem;
   font-weight: 600;
@@ -809,7 +816,72 @@ body {
   overflow-y: auto;
 }
 
-/* Selector Sub-joc */
+/* Selector Mod (Pe Văzute / Pe Nevăzute) & Sub-joc */
+.blind-mode-picker {
+  width: min(680px, 98%);
+  background: rgba(9, 23, 18, 0.93);
+  border: 1px solid var(--border-gold);
+  border-radius: 18px;
+  padding: 18px 22px;
+  box-shadow: var(--shadow-lg);
+  text-align: center;
+}
+
+.blind-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+
+@media (max-width: 580px) {
+  .blind-mode-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.blind-choice-btn {
+  background: rgba(20, 47, 36, 0.92);
+  border: 1px solid var(--border-subtle);
+  border-radius: 14px;
+  padding: 16px 16px;
+  color: var(--text-main);
+  font-family: inherit;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+}
+
+.blind-choice-btn:hover {
+  transform: translateY(-3px);
+  border-color: var(--gold-bright);
+}
+
+.blind-choice-btn.blind-double {
+  background: linear-gradient(155deg, rgba(58, 35, 14, 0.92), rgba(24, 46, 36, 0.95));
+  border-color: rgba(242, 169, 59, 0.55);
+}
+
+.blind-choice-btn.blind-double:hover {
+  border-color: var(--gold-bright);
+  box-shadow: 0 8px 24px rgba(242, 169, 59, 0.3);
+}
+
+.blind-choice-title {
+  font-size: 1.12rem;
+  font-weight: 800;
+  color: var(--gold-bright);
+}
+
+.blind-choice-desc {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
 .subgame-picker {
   width: min(760px, 98%);
   background: rgba(9, 23, 18, 0.9);
@@ -1089,6 +1161,33 @@ body {
 
 .playing-card.black {
   color: var(--card-black);
+}
+
+.playing-card.card-back {
+  background: linear-gradient(145deg, #123c2c, #0b241b);
+  border: 2px solid rgba(234, 191, 96, 0.65);
+  padding: 6px;
+}
+
+.card-back-pattern {
+  width: 100%;
+  height: 100%;
+  border-radius: 6px;
+  border: 1px dashed rgba(234, 191, 96, 0.45);
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(234, 191, 96, 0.08),
+    rgba(234, 191, 96, 0.08) 5px,
+    transparent 5px,
+    transparent 10px
+  );
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(247, 214, 131, 0.75);
+  font-weight: 800;
+  font-size: 1.35rem;
+  letter-spacing: 0.05em;
 }
 
 .card-corner {
