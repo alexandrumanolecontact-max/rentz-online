@@ -1096,16 +1096,13 @@ function renderTableCenter(g, me) {
         const dColor = d > 0 ? 'suit-black' : d < 0 ? 'suit-red' : '';
         return `
           <tr>
-            <td>${escapeHtml(p.nickname)}${p.continuedSummary ? ' ✓' : ''}</td>
+            <td>${escapeHtml(p.nickname)}</td>
             <td class="${dColor}">${formatSigned(d)}</td>
             <td><strong>${s.totalsAfter[p.id]}</strong></td>
           </tr>
         `;
       })
       .join('');
-
-    const continuedCount = g.players.filter((p) => p.continuedSummary).length;
-    const iContinued = me?.continuedSummary;
 
     const blindBadge = s.isBlind ? ' 🔥 (Pe Nevăzute ×2)' : '';
     panel.innerHTML = `
@@ -1121,24 +1118,10 @@ function renderTableCenter(g, me) {
         </thead>
         <tbody>${rowsHtml}</tbody>
       </table>
-      <button id="btn-continue-round" type="button" class="btn btn-primary" ${
-        iContinued ? 'disabled' : ''
-      }>
-        ${
-          iContinued
-            ? `Așteptare ceilalți (${continuedCount}/${g.players.length})...`
-            : `Continuă (${continuedCount}/${g.players.length})`
-        }
-      </button>
+      <p class="subgame-desc">Trecere automată la alegerea următorului joc...</p>
     `;
 
     tableCenter.appendChild(panel);
-    const btnCont = document.getElementById('btn-continue-round');
-    if (btnCont && !iContinued) {
-      btnCont.addEventListener('click', () => {
-        socket.emit('game:continue_summary', {});
-      });
-    }
     return;
   }
 
