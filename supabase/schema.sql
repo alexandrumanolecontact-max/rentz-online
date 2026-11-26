@@ -1,6 +1,5 @@
 -- ============================================================================
 -- Schema SQL pentru sistemul de conturi Rentz Online (Supabase PostgreSQL)
--- Ruleaza acest script o singura data in Supabase -> SQL Editor -> New Query
 -- ============================================================================
 
 -- 1. Tabelul de profiluri (stocheaza username-ul unic legat de contul auth.users)
@@ -13,16 +12,23 @@ create table if not exists public.profiles (
 
 alter table public.profiles enable row level security;
 
+-- Acordare acces pentru Data API (accesul la randuri ramane controlat strict de RLS)
+grant usage on schema public to anon, authenticated;
+grant select on table public.profiles to anon, authenticated;
+grant insert on table public.profiles to authenticated;
+
 -- Politici de securitate (RLS)
 drop policy if exists "Citire publica profiluri" on public.profiles;
 create policy "Citire publica profiluri"
   on public.profiles for select
+  to anon, authenticated
   using (true);
 
 drop policy if exists "Utilizatorii isi pot crea propriul profil" on public.profiles;
 create policy "Utilizatorii isi pot crea propriul profil"
   on public.profiles for insert
-  with check (auth.uid() = id);
+  to authenticated
+  with check ((select auth.uid()) = id);
 
 -- 2. Trigger automat la inregistrare: salveaza username-ul trimis la signUp
 create or replace function public.handle_new_user()
@@ -40,6 +46,8 @@ begin
   return new;
 end;
 $$;
+
+revoke all on function public.handle_new_user() from public, anon, authenticated;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -64,4 +72,7 @@ begin
 end;
 $$;
 
+revoke all on function public.get_email_for_login(text) from public;
 grant execute on function public.get_email_for_login(text) to anon, authenticated;
+
+notify pgrst, 'reload schema';
