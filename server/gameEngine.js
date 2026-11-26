@@ -76,6 +76,7 @@ class RentzGame {
     this.rentzBoard = null;
     this.rentzFinishOrder = [];
     this.rentzLastAction = '';
+    this.rentzRefusalCandidates = [];
 
     this.startNextRound();
   }
@@ -172,6 +173,12 @@ class RentzGame {
       this.statusBanner = `${player.nickname} a revenit în joc — Rândul lui ${player.nickname}!`;
       this.armTurnTimer();
     } else if (
+      this.phase === 'checking_rentz_refusal' &&
+      this.currentTurnPlayerId === playerId
+    ) {
+      this.clearBotTimer();
+      this.armRentzRefusalTimer();
+    } else if (
       (this.phase === 'deciding_blind' || this.phase === 'choosing_subgame') &&
       this.chooserId === playerId
     ) {
@@ -212,6 +219,23 @@ class RentzGame {
             this.chooseSubgame(this.chooserId, randomSub, { automated: true });
             this.onStateChange();
           }
+        }
+      }, TIMERS.BOT_ACTION_DELAY_MS);
+      return;
+    }
+
+    if (
+      this.phase === 'checking_rentz_refusal' &&
+      this.currentTurnPlayerId &&
+      this.isSeatAutomated(this.currentTurnPlayerId)
+    ) {
+      this.clearTurnTimer();
+      const targetId = this.currentTurnPlayerId;
+      this.botTimer = setTimeout(() => {
+        this.botTimer = null;
+        if (this.phase === 'checking_rentz_refusal' && this.currentTurnPlayerId === targetId) {
+          this.decideRentzRefusal(targetId, false, { automated: true });
+          this.onStateChange();
         }
       }, TIMERS.BOT_ACTION_DELAY_MS);
       return;
@@ -453,6 +477,7 @@ class RentzGame {
     this.rentzBoard = null;
     this.rentzFinishOrder = [];
     this.rentzLastAction = '';
+    this.rentzRefusalCandidates = [];
     this.summaryContinueSet.clear();
 
     this.phase = 'deciding_blind';
@@ -522,19 +547,16 @@ class RentzGame {
     const blindTag = this.isBlind ? ' PE NEVĂZUTE (×2)' : '';
 
     if (subgame.mode === 'rentz') {
-      this.phase = 'playing_rentz';
-      this.rentzBoard = {
-        spades: null,
-        hearts: null,
-        clubs: null,
-        diamonds: null,
-      };
-      this.rentzFinishOrder = [];
-      this.currentTurnPlayerId = this.chooserId;
-      const centerLabel = RANK_LABELS[this.centerRank];
-      this.rentzLastAction = `${chooser.nickname} a ales Rentz${blindTag}! Fiecare culoare se deschide cu ${centerLabel}.`;
-      this.statusBanner = this.rentzLastAction;
-      this.armTurnTimer();
+      const capeteCandidates = this.getOrderedCapeteCandidates();
+      if (capeteCandidates.length > 0) {
+        this.rentzRefusalCandidates = capeteCandidates;
+        this.enterRentzRefusalPhase(`${chooser.nickname} a ales Rentz${blindTag}. `);
+      } else {
+        const centerLabel = RANK_LABELS[this.centerRank];
+        this.startRentzPlayPhase(
+          `${chooser.nickname} a ales Rentz${blindTag}! Fiecare culoare se deschide cu ${centerLabel}.`
+        );
+      }
     } else {
       this.phase = 'playing_tricks';
       this.trickNumber = 1;
@@ -545,6 +567,167 @@ class RentzGame {
       this.armTurnTimer();
     }
 
+    return { ok: true };
+  }
+
+  countCapete(hand = []) {
+    return hand.filter((c) => c.value === 14 || c.value === this.minRank).length;
+  }
+
+  getOrderedCapeteCandidates() {
+    const startIdx = Math.max(0, this.getPlayerIndex(this.chooserId));
+    const candidates = [];
+    for (let step = 0; step < this.numPlayers; step++) {
+      const p = this.players[(startIdx + step) % this.numPlayers];
+      if (this.countCapete(this.hands[p.id] || []) >= 4) {
+        candidates.push(p.id);
+      }
+    }
+    return candidates;
+  }
+
+  redealFreshHands() {
+    const deck = shuffleDeck(createDeck(this.numPlayers));
+    this.players.forEach((p, idx) => {
+      const slice = deck.slice(idx * CARDS_PER_PLAYER, (idx + 1) * CARDS_PER_PLAYER);
+      this.hands[p.id] = sortHand(slice);
+    });
+  }
+
+  startRentzPlayPhase(bannerMsg) {
+    this.phase = 'playing_rentz';
+    this.rentzRefusalCandidates = [];
+    this.rentzBoard = {
+      spades: null,
+      hearts: null,
+      clubs: null,
+      diamonds: null,
+    };
+    this.rentzFinishOrder = [];
+    this.currentTurnPlayerId = this.chooserId;
+    this.rentzLastAction = bannerMsg;
+    this.statusBanner = bannerMsg;
+    this.armTurnTimer();
+  }
+
+  enterRentzRefusalPhase(prefixMsg = '') {
+    this.phase = 'checking_rentz_refusal';
+    this.currentTurnPlayerId = this.rentzRefusalCandidates[0];
+    const candidate = this.getPlayerById(this.currentTurnPlayerId);
+    const capeteCount = this.countCapete(this.hands[this.currentTurnPlayerId] || []);
+    this.statusBanner = `${prefixMsg}${candidate.nickname} are ${capeteCount} capete în mână și decide dacă joacă sau refuză mâna...`;
+    this.armRentzRefusalTimer();
+  }
+
+  armRentzRefusalTimer() {
+    this.clearTurnTimer();
+    this.clearBotTimer();
+    if (this.phase !== 'checking_rentz_refusal' || !this.currentTurnPlayerId) {
+      return;
+    }
+
+    if (this.isSeatAutomated(this.currentTurnPlayerId)) {
+      this.scheduleBotActionIfNeeded();
+      return;
+    }
+
+    const meta = this.seatMeta[this.currentTurnPlayerId] || { consecutiveTimeouts: 0 };
+    const isThirdStrike = meta.consecutiveTimeouts >= 2;
+
+    this.turnStartedAt = Date.now();
+    this.turnIsAfkWarning = isThirdStrike;
+    const totalTimeoutMs = isThirdStrike
+      ? TIMERS.AFK_THIRD_STRIKE_MS
+      : TIMERS.TURN_VISIBLE_MS + TIMERS.TURN_GRACE_MS;
+
+    const targetId = this.currentTurnPlayerId;
+    this.turnTimer = setTimeout(() => {
+      this.turnTimer = null;
+      if (this.phase !== 'checking_rentz_refusal' || this.currentTurnPlayerId !== targetId) {
+        return;
+      }
+      const m = this.seatMeta[targetId];
+      if (m) {
+        m.consecutiveTimeouts += 1;
+        if (m.consecutiveTimeouts >= 3) {
+          m.isAfk = true;
+        }
+      }
+      const res = this.decideRentzRefusal(targetId, false, { automated: true });
+      if (res.ok) {
+        this.onStateChange();
+      }
+    }, totalTimeoutMs);
+  }
+
+  decideRentzRefusal(playerId, refuse, { automated = false } = {}) {
+    if (this.phase !== 'checking_rentz_refusal') {
+      return { ok: false, error: 'Nu există o decizie de refuz activă.' };
+    }
+    if (this.currentTurnPlayerId !== playerId) {
+      return { ok: false, error: 'Nu este rândul tău să decizi.' };
+    }
+    if (!automated && this.seatMeta[playerId]?.isAfk) {
+      return { ok: false, error: 'Apasă mai întâi pe „Reia Jocul” pentru a ieși din AFK.' };
+    }
+
+    this.clearTurnTimer();
+    this.clearBotTimer();
+    if (!automated) {
+      this.recordManualAction(playerId);
+    }
+
+    const player = this.getPlayerById(playerId);
+    const chooser = this.getPlayerById(this.chooserId);
+    const centerLabel = RANK_LABELS[this.centerRank];
+    const blindTag = this.isBlind ? ' PE NEVĂZUTE (×2)' : '';
+
+    // Dacă jucătorul alege să CONTINUE cu cărțile actuale
+    if (!refuse) {
+      this.rentzRefusalCandidates = this.rentzRefusalCandidates.filter((id) => id !== playerId);
+      if (this.rentzRefusalCandidates.length > 0) {
+        this.enterRentzRefusalPhase(`${player.nickname} a ales să continue. `);
+        return { ok: true };
+      }
+      this.startRentzPlayPhase(
+        `${player.nickname} a ales să continue! Începe Rentz${blindTag} — fiecare culoare se deschide cu ${centerLabel}.`
+      );
+      return { ok: true };
+    }
+
+    // Jucătorul a ales să REFUZE mâna (are 4+ capete) -> reîmpărțim cărțile!
+    this.rentzRefusalCandidates = [];
+    this.redealFreshHands();
+    this.cardsRevealed = true;
+
+    // CAZUL 1: Se juca PE NEVĂZUTE (×2) -> rămâne tot Rentz Pe Nevăzute, doar reshuffle (cu verificare din nou pt 4+ capete!)
+    if (this.isBlind) {
+      const nextCandidates = this.getOrderedCapeteCandidates();
+      if (nextCandidates.length > 0) {
+        this.rentzRefusalCandidates = nextCandidates;
+        this.enterRentzRefusalPhase(
+          `🔄 ${player.nickname} a cerut reshuffle (4+ capete)! Cărți noi împărțite — `
+        );
+        return { ok: true };
+      }
+
+      this.startRentzPlayPhase(
+        `🔄 ${player.nickname} a cerut reshuffle (4+ capete)! Cărți noi — se joacă tot Rentz PE NEVĂZUTE (×2), deschidere cu ${centerLabel}!`
+      );
+      return { ok: true };
+    }
+
+    // CAZUL 2: Se juca PE VĂZUTE (×1) -> reshuffle + alegătorul poate schimba jocul (inclusiv să aleagă iar Rentz dacă dorește)
+    if (!this.availableSubgames[this.chooserId].includes('rentz')) {
+      this.availableSubgames[this.chooserId].push('rentz');
+    }
+    this.currentSubgame = null;
+    this.isBlind = false;
+    this.scoreMultiplier = 1;
+    this.phase = 'choosing_subgame';
+    this.currentTurnPlayerId = this.chooserId;
+    this.statusBanner = `🔄 ${player.nickname} a refuzat Rentz (4+ capete)! Cărțile au fost reîmpărțite — ${chooser.nickname} poate alege din nou jocul (Pe Văzute ×1).`;
+    this.armSelectionTimer();
     return { ok: true };
   }
 
@@ -1066,6 +1249,7 @@ class RentzGame {
     const hasActiveTurnTimer =
       (this.phase === 'deciding_blind' ||
         this.phase === 'choosing_subgame' ||
+        this.phase === 'checking_rentz_refusal' ||
         this.phase === 'playing_tricks' ||
         this.phase === 'playing_rentz') &&
       Boolean(this.currentTurnPlayerId) &&
@@ -1101,6 +1285,7 @@ class RentzGame {
       centerRankLabel: RANK_LABELS[this.centerRank],
       suitsOrder: SUITS,
       myHand: this.cardsRevealed ? viewerHand : [],
+      myCapeteCount: this.cardsRevealed ? this.countCapete(viewerHand) : 0,
       hiddenHandCount: this.cardsRevealed ? 0 : viewerHand.length,
       playableCardIds,
       canPassRentz,

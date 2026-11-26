@@ -318,6 +318,21 @@ io.on('connection', (socket) => {
     if (typeof ack === 'function') ack({ ok: true });
   });
 
+  socket.on('game:decide_rentz_refusal', (data = {}, ack) => {
+    const room = playerId ? roomManager.getRoomByPlayer(playerId) : null;
+    if (!room || !room.game) {
+      if (typeof ack === 'function') ack({ ok: false, error: 'Jocul nu este activ.' });
+      return;
+    }
+    const res = room.game.decideRentzRefusal(playerId, Boolean(data.refuse));
+    if (!res.ok) {
+      if (typeof ack === 'function') ack({ ok: false, error: res.error });
+      return;
+    }
+    broadcastRoomState(room.code);
+    if (typeof ack === 'function') ack({ ok: true });
+  });
+
   socket.on('game:pass_rentz', (_data = {}, ack) => {
     const room = playerId ? roomManager.getRoomByPlayer(playerId) : null;
     if (!room || !room.game) {

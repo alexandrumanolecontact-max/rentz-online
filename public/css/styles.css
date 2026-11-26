@@ -1400,6 +1400,12 @@ body {
   cursor: not-allowed;
 }
 
+.my-hand .playing-card.capat-highlight {
+  border: 2px solid var(--amber);
+  box-shadow: 0 0 0 2px rgba(242, 169, 59, 0.35), 0 8px 18px rgba(0, 0, 0, 0.4);
+  transform: translateY(-5px);
+}
+
 /* Rezumat Rundă & Final Joc */
 .summary-panel {
   width: min(560px, 96%);

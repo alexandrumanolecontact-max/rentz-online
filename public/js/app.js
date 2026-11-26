@@ -992,6 +992,65 @@ function renderTableCenter(g, me) {
     return;
   }
 
+  if (g.phase === 'checking_rentz_refusal') {
+    if (g.currentTurnPlayerId === myId && me) {
+      const box = document.createElement('div');
+      box.className = 'blind-mode-picker';
+      const chooser = g.players.find((p) => p.id === g.chooserId);
+      const explainHtml = g.isBlind
+        ? `Se joacă <strong>Rentz PE NEVĂZUTE (×2)</strong>. Dacă alegi să refuzi, se va da <strong>reshuffle la cărți</strong> și se va juca tot Rentz (×2).`
+        : `Se joacă <strong>Rentz Pe Văzute (×1)</strong>. Dacă alegi să refuzi, se dă <strong>reshuffle la cărți</strong> și ${escapeHtml(
+            chooser?.nickname || 'alegătorul'
+          )} va putea alege din nou jocul (tot Pe Văzute).`;
+
+      const refuseTitle = g.isBlind
+        ? '🔄 Nu continua (Reshuffle Rentz ×2)'
+        : '🔄 Nu juca (Reshuffle & Schimbare Joc)';
+      const refuseDesc = g.isBlind
+        ? 'Se reîmpart cărțile pentru toți și rămâne tot Rentz la dublu.'
+        : 'Se reîmpart cărțile, iar alegătorul poate păstra sau schimba jocul.';
+
+      box.innerHTML = `
+        <div class="picker-title">Ai ${g.myCapeteCount} capete în mână (Ași / ${escapeHtml(
+        g.minRankLabel
+      )})!${centerTimerHtml}</div>
+        <p class="subgame-desc" style="margin-bottom: 12px">${explainHtml}</p>
+        <div class="blind-mode-grid">
+          <button type="button" id="btn-rentz-refuse" class="blind-choice-btn blind-double">
+            <span class="blind-choice-title">${refuseTitle}</span>
+            <span class="blind-choice-desc">${refuseDesc}</span>
+          </button>
+          <button type="button" id="btn-rentz-continue" class="blind-choice-btn">
+            <span class="blind-choice-title">▶ Continuă Jocul</span>
+            <span class="blind-choice-desc">Păstrează cărțile actuale din mână și începe runda de Rentz.</span>
+          </button>
+        </div>
+      `;
+      tableCenter.appendChild(box);
+
+      document.getElementById('btn-rentz-refuse')?.addEventListener('click', () => {
+        socket.emit('game:decide_rentz_refusal', { refuse: true }, (res) => {
+          if (res && !res.ok) showToast(res.error, true);
+        });
+      });
+      document.getElementById('btn-rentz-continue')?.addEventListener('click', () => {
+        socket.emit('game:decide_rentz_refusal', { refuse: false }, (res) => {
+          if (res && !res.ok) showToast(res.error, true);
+        });
+      });
+    } else {
+      const decidingPlayer = g.players.find((p) => p.id === g.currentTurnPlayerId);
+      const box = document.createElement('div');
+      box.className = 'waiting-chooser-box';
+      box.innerHTML = `
+        <h3>${escapeHtml(decidingPlayer?.nickname || 'Un jucător')} are 4+ capete!${centerTimerHtml}</h3>
+        <p class="subgame-desc">Decide dacă joacă cu cărțile din mână sau cere reîmpărțirea cărților...</p>
+      `;
+      tableCenter.appendChild(box);
+    }
+    return;
+  }
+
   if (g.phase === 'playing_tricks' || g.phase === 'trick_complete') {
     const arena = document.createElement('div');
     arena.className = 'trick-arena';
@@ -1186,6 +1245,8 @@ function renderMyHand(g, me) {
   const isActionPhase = g.phase === 'playing_tricks' || g.phase === 'playing_rentz';
   const isMyTurn = !isAfk && g.currentTurnPlayerId === state.user?.id;
   const playableSet = new Set(g.playableCardIds || []);
+  const highlightCapete =
+    g.phase === 'checking_rentz_refusal' && g.currentTurnPlayerId === state.user?.id;
 
   for (const card of g.myHand) {
     const playable = isActionPhase && isMyTurn && playableSet.has(card.id);
@@ -1202,6 +1263,9 @@ function renderMyHand(g, me) {
         });
       },
     });
+    if (highlightCapete && (card.value === 14 || card.value === g.minRank)) {
+      cardEl.classList.add('capat-highlight');
+    }
     myHandContainer.appendChild(cardEl);
   }
 }
