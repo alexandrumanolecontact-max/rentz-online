@@ -307,13 +307,15 @@ class RentzGame {
       meta.isAfk = true;
     }
 
-    // Dacă nu a reușit să finalizeze ambele alegeri în timp util, se forțează PE NEVĂZUTE (la dublu ×2) și un joc random!
-    this.isBlind = true;
-    this.scoreMultiplier = 2;
-    this.phase = 'choosing_subgame';
-
     const avail = this.availableSubgames[chooserId] || [];
     if (avail.length === 0) return;
+
+    // Dacă mai era un singur joc disponibil, nu se dublează niciodată (rămâne ×1), altfel se forțează PE NEVĂZUTE (×2)
+    const canDouble = avail.length > 1;
+    this.isBlind = canDouble;
+    this.scoreMultiplier = canDouble ? 2 : 1;
+    this.phase = 'choosing_subgame';
+
     const randomSubId = avail[crypto.randomInt(0, avail.length)];
 
     const res = this.chooseSubgame(chooserId, randomSubId, { automated: true });
@@ -481,6 +483,21 @@ class RentzGame {
     this.rentzRefusalCandidates = [];
     this.summaryContinueSet.clear();
 
+    const chooserAvailable = this.availableSubgames[this.chooserId] || [];
+    // Când jucătorul mai are de jucat un singur joc (ultimul lui joc), se joacă direct pe puncte normale (×1, ca Pe Văzute)
+    if (chooserAvailable.length === 1) {
+      const lastSubgameId = chooserAvailable[0];
+      this.isBlind = false;
+      this.scoreMultiplier = 1;
+      this.cardsRevealed = true;
+      this.phase = 'choosing_subgame';
+      this.chooseSubgame(this.chooserId, lastSubgameId, { automated: true });
+      if (this.phase !== 'checking_rentz_refusal') {
+        this.statusBanner = `Ultimul joc pentru ${chooser.nickname}: ${this.currentSubgame.name} (punctaj normal ×1) — ${chooser.nickname} deschide!`;
+      }
+      return;
+    }
+
     this.phase = 'deciding_blind';
     this.statusBanner = `${chooser.nickname} alege modul rundei: Pe Văzute (×1) sau Pe Nevăzute (×2)...`;
     this.armSelectionTimer();
@@ -498,7 +515,8 @@ class RentzGame {
     }
 
     const chooser = this.getPlayerById(playerId);
-    this.isBlind = Boolean(blind);
+    const availCount = (this.availableSubgames[playerId] || []).length;
+    this.isBlind = availCount > 1 ? Boolean(blind) : false;
     this.scoreMultiplier = this.isBlind ? 2 : 1;
     this.cardsRevealed = !this.isBlind;
     this.phase = 'choosing_subgame';
@@ -724,6 +742,24 @@ class RentzGame {
     if (!this.availableSubgames[this.chooserId].includes('rentz')) {
       this.availableSubgames[this.chooserId].push('rentz');
     }
+
+    // Dacă Rentz era chiar ultimul joc rămas al alegătorului, rămâne tot Rentz pe puncte normale (×1) după reshuffle
+    if (this.availableSubgames[this.chooserId].length === 1) {
+      this.availableSubgames[this.chooserId] = [];
+      const nextCandidates = this.getOrderedCapeteCandidates();
+      if (nextCandidates.length > 0) {
+        this.rentzRefusalCandidates = nextCandidates;
+        this.enterRentzRefusalPhase(
+          `🔄 ${player.nickname} a cerut reshuffle (${capLabel})! Cărți noi împărțite — `
+        );
+        return { ok: true };
+      }
+      this.startRentzPlayPhase(
+        `🔄 ${player.nickname} a cerut reshuffle (${capLabel})! Cărți noi — ultimul joc rămas este Rentz (punctaj normal ×1)!`
+      );
+      return { ok: true };
+    }
+
     this.currentSubgame = null;
     this.isBlind = false;
     this.scoreMultiplier = 1;

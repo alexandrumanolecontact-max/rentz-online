@@ -511,7 +511,22 @@ async function runTests() {
   assert.strictEqual(capGame2.phase, 'playing_tricks');
   capGame2.destroy();
 
-  console.log('9. Verificare server Express + Socket.IO si fisiere frontend...');
+  console.log('9. Verificare ultimul joc ramas al unui jucator -> porneste direct pe puncte normale (x1, fara Pe Nevazute)...');
+  const lastSubGame = new RentzGame(players);
+  // Simulam ca p2 mai are doar 1 singur joc disponibil ('whist') si urmeaza runda lui p2
+  lastSubGame.availableSubgames['p2'] = ['whist'];
+  lastSubGame.roundNumber = 1; // startNextRound il va incrementa la 2 -> chooserIdx = 1 ('p2')
+  lastSubGame.startNextRound();
+
+  assert.strictEqual(lastSubGame.chooserId, 'p2');
+  assert.strictEqual(lastSubGame.isBlind, false, 'Ultimul joc nu poate fi jucat Pe Nevazute!');
+  assert.strictEqual(lastSubGame.scoreMultiplier, 1, 'Ultimul joc trebuie jucat la punctaj normal (x1)!');
+  assert.strictEqual(lastSubGame.cardsRevealed, true, 'Cartile trebuie sa fie direct vizibile!');
+  assert.strictEqual(lastSubGame.currentSubgame.id, 'whist');
+  assert.strictEqual(lastSubGame.phase, 'playing_tricks', 'Ultimul joc trebuie sa inceapa direct!');
+  lastSubGame.destroy();
+
+  console.log('10. Verificare server Express + Socket.IO si fisiere frontend...');
   const { server, io } = require('../server/index');
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;
