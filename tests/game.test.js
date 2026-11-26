@@ -572,6 +572,7 @@ async function runTests() {
     '/css/styles.css',
     '/js/app.js',
     '/js/cards.js',
+    '/js/sound.js',
     '/manifest.webmanifest',
     '/sw.js',
     '/icons/icon-192.png',

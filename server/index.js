@@ -13,6 +13,7 @@ const {
   registerAccount,
   loginAccount,
   setDisplayName,
+  updateUserPreferences,
   requestPasswordReset,
   verifyAccessToken,
 } = require('./auth');
@@ -83,6 +84,20 @@ app.post('/api/auth/display-name', async (req, res) => {
     res.status(result.ok ? 200 : 400).json(result);
   } catch (_err) {
     res.status(500).json({ ok: false, error: 'Eroare internă la salvarea numelui de joc.' });
+  }
+});
+
+app.put('/api/auth/preferences', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    const result = await updateUserPreferences({
+      accessToken: token,
+      preferences: req.body?.preferences,
+    });
+    res.status(result.ok ? 200 : 400).json(result);
+  } catch (_err) {
+    res.status(500).json({ ok: false, error: 'Eroare internă la salvarea preferințelor.' });
   }
 });
 

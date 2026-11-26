@@ -768,7 +768,7 @@ body {
   min-width: 200px;
 }
 
-/* Masa verde */
+/* Masa verde (și teme alternative de postav) */
 .felt-table-wrapper {
   position: relative;
   background: radial-gradient(ellipse at center, #1b4f3a 0%, #103124 72%, #0b2319 100%);
@@ -781,6 +781,30 @@ body {
   padding: 12px 16px;
   overflow: hidden;
   min-height: 0;
+}
+
+body[data-table-theme='royal'] .felt-table-wrapper {
+  background: radial-gradient(ellipse at center, #1c3b63 0%, #10243f 72%, #0a182b 100%);
+}
+
+body[data-table-theme='royal'] .playing-card.card-back {
+  background: linear-gradient(145deg, #173459, #0c1d33);
+}
+
+body[data-table-theme='burgundy'] .felt-table-wrapper {
+  background: radial-gradient(ellipse at center, #5c1d2c 0%, #38111b 72%, #240a11 100%);
+}
+
+body[data-table-theme='burgundy'] .playing-card.card-back {
+  background: linear-gradient(145deg, #541927, #2b0c14);
+}
+
+body[data-table-theme='noir'] .felt-table-wrapper {
+  background: radial-gradient(ellipse at center, #2a3036 0%, #191d21 72%, #101316 100%);
+}
+
+body[data-table-theme='noir'] .playing-card.card-back {
+  background: linear-gradient(145deg, #272c32, #14171a);
 }
 
 /* Adversari în partea de sus / lateral */
@@ -1455,6 +1479,22 @@ body {
   box-shadow: 0 12px 26px rgba(247, 214, 131, 0.45);
 }
 
+.my-hand .playing-card.selected-confirm {
+  transform: translateY(-18px) scale(1.05);
+  border: 2px solid var(--gold-bright);
+  box-shadow: 0 0 0 3px rgba(247, 214, 131, 0.38), 0 14px 28px rgba(0, 0, 0, 0.55);
+}
+
+.double-tap-hint {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--gold-bright);
+  background: rgba(234, 191, 96, 0.14);
+  border: 1px solid var(--border-gold);
+  padding: 3px 12px;
+  border-radius: 999px;
+}
+
 .my-hand .playing-card.disabled-card {
   opacity: 0.46;
   filter: grayscale(0.2);
@@ -1568,7 +1608,118 @@ body {
 }
 
 .modal-card.modal-settings {
-  width: min(520px, 95vw);
+  width: min(580px, 96vw);
+}
+
+.settings-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.choice-pills-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 520px) {
+  .choice-pills-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+.pref-pill {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.86rem;
+  padding: 10px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+}
+
+.pref-pill.active {
+  background: rgba(38, 184, 119, 0.2);
+  border-color: var(--emerald);
+  color: #84f7be;
+}
+
+.theme-swatches-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-swatch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 0.86rem;
+  cursor: pointer;
+}
+
+.theme-swatch.active {
+  border-color: var(--gold-bright);
+  background: rgba(234, 191, 96, 0.14);
+  color: var(--gold-bright);
+}
+
+.swatch-dot {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.45);
+  flex-shrink: 0;
+}
+
+.swatch-dot.emerald {
+  background: #184b37;
+}
+
+.swatch-dot.royal {
+  background: #1b3b66;
+}
+
+.swatch-dot.burgundy {
+  background: #5c1d2c;
+}
+
+.swatch-dot.noir {
+  background: #252a30;
+}
+
+.settings-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.toggle-checkbox {
+  width: 22px;
+  height: 22px;
+  accent-color: var(--emerald);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.volume-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .modal-card.modal-xl {

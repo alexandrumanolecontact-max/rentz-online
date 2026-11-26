@@ -13,6 +13,7 @@ create table if not exists public.profiles (
   display_name text check (display_name is null or char_length(trim(display_name)) between 2 and 18),
   display_name_lower text generated always as (lower(trim(display_name))) stored unique,
   display_name_changed_at timestamptz,
+  preferences jsonb not null default '{}'::jsonb,
   created_at timestamptz not null default now()
 );
 
@@ -22,7 +23,7 @@ alter table public.profiles enable row level security;
 grant usage on schema public to anon, authenticated;
 grant select on table public.profiles to anon, authenticated;
 grant insert on table public.profiles to authenticated;
-grant update (display_name) on table public.profiles to authenticated;
+grant update (display_name, preferences) on table public.profiles to authenticated;
 
 -- Politici de securitate (RLS)
 drop policy if exists "Citire publica profiluri" on public.profiles;

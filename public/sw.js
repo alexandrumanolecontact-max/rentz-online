@@ -4,6 +4,7 @@ const PRECACHE_URLS = [
   '/css/styles.css',
   '/js/app.js',
   '/js/cards.js',
+  '/js/sound.js',
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',

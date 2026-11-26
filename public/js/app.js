@@ -5,9 +5,42 @@ import {
   getSuitSymbol,
   isRedSuit,
 } from './cards.js';
+import {
+  playCardTapSound,
+  playCountdownTick,
+  playYourTurnAlert,
+  triggerTurnVibration,
+} from './sound.js';
+
+const LOCAL_PREFS_KEY = 'rentz_user_prefs';
+
+function loadLocalPrefs() {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(LOCAL_PREFS_KEY) || '{}');
+    return {
+      soundEnabled: parsed.soundEnabled !== false,
+      soundVolume: typeof parsed.soundVolume === 'number' ? parsed.soundVolume : 70,
+      turnAlert: parsed.turnAlert !== false,
+      vibrateOnTurn: parsed.vibrateOnTurn !== false,
+      confirmCardPlay: parsed.confirmCardPlay === 'double' ? 'double' : 'single',
+      handSort: parsed.handSort === 'desc' ? 'desc' : 'asc',
+      tableTheme: parsed.tableTheme || 'emerald',
+    };
+  } catch {
+    return {
+      soundEnabled: true,
+      soundVolume: 70,
+      turnAlert: true,
+      vibrateOnTurn: true,
+      confirmCardPlay: 'single',
+      handSort: 'asc',
+      tableTheme: 'emerald',
+    };
+  }
+}
 
 const state = {
-  user: null, // { id, username, email }
+  user: null, // { id, username, email, preferences }
   accessToken: '',
   room: null,
   authConfigured: true,
@@ -15,7 +48,14 @@ const state = {
   turnDeadlinePerf: null,
   turnTotalMs: 30000,
   turnIsAfkWarning: false,
+  prefs: loadLocalPrefs(),
+  selectedCardId: null,
+  lastNotifiedTurnKey: '',
+  lastTickSecond: null,
+  lastObservedTrickCount: 0,
 };
+
+document.body.dataset.tableTheme = state.prefs.tableTheme;
 
 let turnTickerInterval = null;
 
@@ -99,6 +139,7 @@ const afkResumeBanner = document.getElementById('afk-resume-banner');
 const btnResumeAfk = document.getElementById('btn-resume-afk');
 const rentzPassRow = document.getElementById('rentz-pass-row');
 const btnPassRentz = document.getElementById('btn-pass-rentz');
+const doubleTapHint = document.getElementById('double-tap-hint');
 const myHandContainer = document.getElementById('my-hand');
 
 const modalScores = document.getElementById('modal-scores');
@@ -232,6 +273,16 @@ function connectAuthenticatedSocket(accessToken) {
   }
 }
 
+function applyUserPreferences(serverPrefs) {
+  if (!serverPrefs || typeof serverPrefs !== 'object') return;
+  state.prefs = {
+    ...state.prefs,
+    ...serverPrefs,
+  };
+  localStorage.setItem(LOCAL_PREFS_KEY, JSON.stringify(state.prefs));
+  document.body.dataset.tableTheme = state.prefs.tableTheme || 'emerald';
+}
+
 function emitSessionInit() {
   if (!state.accessToken) return;
   socket.emit('session:init', { accessToken: state.accessToken }, (res) => {
@@ -244,6 +295,9 @@ function emitSessionInit() {
       return;
     }
     state.user = res.user;
+    if (res.user?.preferences) {
+      applyUserPreferences(res.user.preferences);
+    }
 
     // La primul login (când display_name nu a fost încă setat), cerem alegerea numelui de jucător
     if (res.needsDisplayName || res.user?.needsDisplayName) {
@@ -342,6 +396,21 @@ function updateLiveTurnTimerDOM() {
   if (fill) {
     fill.style.width = `${snap.pct}%`;
     fill.className = `turn-progress-fill${snap.tone ? ` ${snap.tone}` : ''}`;
+  }
+
+  // Bip discret în ultimele 5 secunde dacă este rândul meu
+  const g = state.room?.game;
+  if (
+    g &&
+    g.currentTurnPlayerId === state.user?.id &&
+    state.prefs.soundEnabled &&
+    state.prefs.turnAlert &&
+    snap.displaySecs >= 1 &&
+    snap.displaySecs <= 5 &&
+    state.lastTickSecond !== snap.displaySecs
+  ) {
+    state.lastTickSecond = snap.displaySecs;
+    playCountdownTick((state.prefs.soundVolume ?? 70) / 100);
   }
 }
 
@@ -742,6 +811,35 @@ function renderCapturedBadges(p, subgame) {
 function renderGame(room) {
   const g = room.game;
   const myId = state.user?.id;
+
+  // Efect sonor la cărțile puse pe masă + alertă când devine rândul tău
+  const trickLen = g.currentTrick?.length || 0;
+  if (state.prefs.soundEnabled && trickLen > state.lastObservedTrickCount) {
+    playCardTapSound((state.prefs.soundVolume ?? 70) / 100);
+  }
+  state.lastObservedTrickCount = trickLen;
+
+  const meObj = g.players.find((p) => p.id === myId);
+  const turnKey = `${g.roundNumber}_${g.trickNumber}_${g.phase}_${g.currentTurnPlayerId}`;
+  if (
+    g.currentTurnPlayerId === myId &&
+    !meObj?.isAfk &&
+    (g.phase === 'deciding_blind' ||
+      g.phase === 'choosing_subgame' ||
+      g.phase === 'checking_rentz_refusal' ||
+      g.phase === 'playing_tricks' ||
+      g.phase === 'playing_rentz') &&
+    state.lastNotifiedTurnKey !== turnKey
+  ) {
+    state.lastNotifiedTurnKey = turnKey;
+    state.lastTickSecond = null;
+    if (state.prefs.soundEnabled && state.prefs.turnAlert) {
+      playYourTurnAlert((state.prefs.soundVolume ?? 70) / 100);
+    }
+    if (state.prefs.vibrateOnTurn) {
+      triggerTurnVibration();
+    }
+  }
 
   hudRound.textContent = `Runda ${g.roundNumber} / ${g.totalRounds}`;
   if (g.currentSubgame) {
@@ -1252,11 +1350,23 @@ function renderTableCenter(g, me) {
   }
 }
 
+function sortCardsByUserPref(cards) {
+  if (state.prefs.handSort !== 'desc') return cards;
+  const suitOrder = { spades: 0, hearts: 1, clubs: 2, diamonds: 3 };
+  return cards.slice().sort((a, b) => {
+    if (suitOrder[a.suit] !== suitOrder[b.suit]) {
+      return suitOrder[a.suit] - suitOrder[b.suit];
+    }
+    return b.value - a.value;
+  });
+}
+
 function renderMyHand(g, me) {
   myHandContainer.innerHTML = '';
 
   // Dacă suntem înainte de dezvăluirea cărților (alegere Pe Văzute / Pe Nevăzute), afișăm cărțile cu fața în jos
   if (!g.cardsRevealed && g.hiddenHandCount > 0) {
+    doubleTapHint?.classList.add('hidden');
     for (let i = 0; i < g.hiddenHandCount; i++) {
       myHandContainer.appendChild(createFaceDownCardElement());
     }
@@ -1270,7 +1380,19 @@ function renderMyHand(g, me) {
   const highlightCapete =
     g.phase === 'checking_rentz_refusal' && g.currentTurnPlayerId === state.user?.id;
 
-  for (const card of g.myHand) {
+  if (!isMyTurn || !playableSet.has(state.selectedCardId)) {
+    state.selectedCardId = null;
+  }
+
+  const requireDoubleTap = state.prefs.confirmCardPlay === 'double';
+  doubleTapHint?.classList.toggle(
+    'hidden',
+    !(requireDoubleTap && isMyTurn && state.selectedCardId)
+  );
+
+  const sortedHand = sortCardsByUserPref(g.myHand || []);
+
+  for (const card of sortedHand) {
     const playable = isActionPhase && isMyTurn && playableSet.has(card.id);
     const disabled = isAfk || (isActionPhase && isMyTurn && !playableSet.has(card.id));
 
@@ -1278,6 +1400,13 @@ function renderMyHand(g, me) {
       playable,
       disabled,
       onClick: (clicked) => {
+        if (requireDoubleTap && state.selectedCardId !== clicked.id) {
+          state.selectedCardId = clicked.id;
+          renderMyHand(g, me);
+          return;
+        }
+        state.selectedCardId = null;
+        doubleTapHint?.classList.add('hidden');
         socket.emit('game:play_card', { cardId: clicked.id }, (res) => {
           if (res && !res.ok) {
             showToast(res.error, true);
@@ -1285,6 +1414,9 @@ function renderMyHand(g, me) {
         });
       },
     });
+    if (requireDoubleTap && state.selectedCardId === card.id) {
+      cardEl.classList.add('selected-confirm');
+    }
     if (highlightCapete && (card.value === 14 || card.value === g.minRank)) {
       cardEl.classList.add('capat-highlight');
     }
@@ -1761,9 +1893,175 @@ function renderAccountSettingsModal() {
   if (pwaSec) {
     pwaSec.classList.toggle('hidden', !deferredInstallPrompt || isStandaloneApp());
   }
+
+  syncSettingsPreferencesControls();
 }
 
+let activeSettingsTab = 'account';
+function switchSettingsTab(tabName) {
+  activeSettingsTab = tabName;
+  document.querySelectorAll('.settings-tab').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-settings-tab') === tabName);
+  });
+  document
+    .getElementById('settings-pane-account')
+    ?.classList.toggle('hidden', tabName !== 'account');
+  document
+    .getElementById('settings-pane-gameplay')
+    ?.classList.toggle('hidden', tabName !== 'gameplay');
+  document
+    .getElementById('settings-pane-audio')
+    ?.classList.toggle('hidden', tabName !== 'audio');
+}
+
+document.querySelectorAll('.settings-tab').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    switchSettingsTab(btn.getAttribute('data-settings-tab') || 'account');
+  });
+});
+
+function syncSettingsPreferencesControls() {
+  const p = state.prefs;
+  document.querySelectorAll('[data-pref-confirm]').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-pref-confirm') === p.confirmCardPlay);
+  });
+  document.querySelectorAll('[data-pref-sort]').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-pref-sort') === p.handSort);
+  });
+  document.querySelectorAll('[data-pref-theme]').forEach((btn) => {
+    btn.classList.toggle('active', btn.getAttribute('data-pref-theme') === p.tableTheme);
+  });
+
+  const chkSound = document.getElementById('chk-pref-sound');
+  const rngVol = document.getElementById('rng-pref-volume');
+  const lblVol = document.getElementById('lbl-pref-volume');
+  const chkAlert = document.getElementById('chk-pref-turn-alert');
+  const chkVib = document.getElementById('chk-pref-vibrate');
+
+  if (chkSound) chkSound.checked = Boolean(p.soundEnabled);
+  if (rngVol) rngVol.value = String(p.soundVolume ?? 70);
+  if (lblVol) lblVol.textContent = `${p.soundVolume ?? 70}%`;
+  if (chkAlert) chkAlert.checked = Boolean(p.turnAlert);
+  if (chkVib) chkVib.checked = Boolean(p.vibrateOnTurn);
+}
+
+let savePrefsTimeout = null;
+function updatePreference(patch) {
+  state.prefs = {
+    ...state.prefs,
+    ...patch,
+  };
+  localStorage.setItem(LOCAL_PREFS_KEY, JSON.stringify(state.prefs));
+  document.body.dataset.tableTheme = state.prefs.tableTheme || 'emerald';
+  syncSettingsPreferencesControls();
+
+  // Re-randăm mâna dacă suntem în joc (ex. s-a schimbat sortarea sau modul 2-click)
+  if (state.room?.status === 'in_game' && state.room.game) {
+    const me = state.room.game.players.find((pl) => pl.id === state.user?.id);
+    renderMyHand(state.room.game, me);
+  }
+
+  // Sincronizare asincronă în contul Supabase (cu debounce scurt)
+  if (state.accessToken) {
+    clearTimeout(savePrefsTimeout);
+    savePrefsTimeout = setTimeout(() => {
+      fetch('/api/auth/preferences', {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${state.accessToken}`,
+        },
+        body: JSON.stringify({ preferences: state.prefs }),
+      }).catch(() => {});
+    }, 350);
+  }
+}
+
+document.querySelectorAll('[data-pref-confirm]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    updatePreference({ confirmCardPlay: btn.getAttribute('data-pref-confirm') });
+  });
+});
+
+document.querySelectorAll('[data-pref-sort]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    updatePreference({ handSort: btn.getAttribute('data-pref-sort') });
+  });
+});
+
+document.querySelectorAll('[data-pref-theme]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    updatePreference({ tableTheme: btn.getAttribute('data-pref-theme') });
+  });
+});
+
+document.getElementById('chk-pref-sound')?.addEventListener('change', (e) => {
+  updatePreference({ soundEnabled: e.target.checked });
+});
+
+document.getElementById('rng-pref-volume')?.addEventListener('input', (e) => {
+  const val = Number(e.target.value);
+  const lbl = document.getElementById('lbl-pref-volume');
+  if (lbl) lbl.textContent = `${val}%`;
+  updatePreference({ soundVolume: val });
+});
+
+document.getElementById('btn-test-sound')?.addEventListener('click', () => {
+  playYourTurnAlert((state.prefs.soundVolume ?? 70) / 100);
+});
+
+document.getElementById('chk-pref-turn-alert')?.addEventListener('change', (e) => {
+  updatePreference({ turnAlert: e.target.checked });
+});
+
+document.getElementById('chk-pref-vibrate')?.addEventListener('change', (e) => {
+  updatePreference({ vibrateOnTurn: e.target.checked });
+  if (e.target.checked) triggerTurnVibration();
+});
+
+document.getElementById('btn-game-settings')?.addEventListener('click', () => {
+  switchSettingsTab('gameplay');
+  renderAccountSettingsModal();
+  modalAccountSettings.classList.remove('hidden');
+});
+
+document.getElementById('form-settings-password')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const newPassInput = document.getElementById('input-settings-new-pass');
+  const confPassInput = document.getElementById('input-settings-confirm-pass');
+  const saveBtn = document.getElementById('btn-save-settings-pass');
+  if (!newPassInput || !confPassInput || !supabaseClient) return;
+
+  if (newPassInput.value.length < 6) {
+    showToast('Parola nouă trebuie să aibă cel puțin 6 caractere.', true);
+    return;
+  }
+  if (newPassInput.value !== confPassInput.value) {
+    showToast('Parolele introduse nu coincid!', true);
+    return;
+  }
+
+  saveBtn.disabled = true;
+  try {
+    const { error } = await supabaseClient.auth.updateUser({
+      password: newPassInput.value,
+    });
+    if (error) {
+      showToast(error.message || 'Nu s-a putut actualiza parola.', true);
+      return;
+    }
+    newPassInput.value = '';
+    confPassInput.value = '';
+    showToast('Parola contului a fost schimbată cu succes!', false);
+  } catch {
+    showToast('Eroare la actualizarea parolei.', true);
+  } finally {
+    saveBtn.disabled = false;
+  }
+});
+
 btnOpenAccountSettings.addEventListener('click', () => {
+  switchSettingsTab('account');
   renderAccountSettingsModal();
   modalAccountSettings.classList.remove('hidden');
 });

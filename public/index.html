@@ -374,6 +374,9 @@
           <button id="btn-open-rules" type="button" class="btn btn-sm btn-ghost">
             Reguli
           </button>
+          <button id="btn-game-settings" type="button" class="btn btn-sm btn-ghost" title="Setări">
+            ⚙️
+          </button>
           <button id="btn-leave-game" type="button" class="btn btn-sm btn-danger-ghost">
             Ieși
           </button>
@@ -408,6 +411,9 @@
             Spune PAS (nu ai nicio carte validă de pus)
           </button>
         </div>
+        <div id="double-tap-hint" class="double-tap-hint hidden">
+          Apasă încă o dată pe cartea selectată pentru a o juca
+        </div>
         <div id="my-hand" class="my-hand" aria-label="Cărțile tale"></div>
       </footer>
     </div>
@@ -435,68 +441,223 @@
     </div>
   </div>
 
-  <!-- MODAL: Setări Cont -->
+  <!-- MODAL: Setări Cont & Preferințe -->
   <div id="modal-account-settings" class="modal-backdrop hidden" role="dialog" aria-modal="true">
     <div class="modal-card modal-settings">
       <div class="modal-header">
-        <h3>⚙️ Setări Cont</h3>
+        <h3>⚙️ Setări Cont &amp; Joc</h3>
         <button type="button" class="btn-close" data-close-modal="modal-account-settings">✕</button>
       </div>
+      <div class="stats-tabs-bar">
+        <button type="button" class="stats-tab settings-tab active" data-settings-tab="account">
+          👤 Cont &amp; Parolă
+        </button>
+        <button type="button" class="stats-tab settings-tab" data-settings-tab="gameplay">
+          🃏 Joc &amp; Masă
+        </button>
+        <button type="button" class="stats-tab settings-tab" data-settings-tab="audio">
+          🔊 Sunet &amp; Mobil
+        </button>
+      </div>
+
       <div class="modal-body">
-        <div class="settings-section">
-          <h4 class="settings-section-title">Detalii Cont</h4>
-          <div class="settings-info-grid">
-            <div class="settings-info-row">
-              <span class="settings-info-label">Username autentificare</span>
-              <strong id="settings-account-username">-</strong>
+        <!-- PANE 1: Cont, Nickname & Schimbare Parolă -->
+        <div id="settings-pane-account" class="settings-pane">
+          <div class="settings-section">
+            <h4 class="settings-section-title">Detalii Cont</h4>
+            <div class="settings-info-grid">
+              <div class="settings-info-row">
+                <span class="settings-info-label">Username autentificare</span>
+                <strong id="settings-account-username">-</strong>
+              </div>
+              <div class="settings-info-row">
+                <span class="settings-info-label">Email recuperare</span>
+                <strong id="settings-account-email">-</strong>
+              </div>
+              <div class="settings-info-row">
+                <span class="settings-info-label">Nickname actual în joc</span>
+                <strong id="settings-current-nickname" class="gold-text">-</strong>
+              </div>
             </div>
-            <div class="settings-info-row">
-              <span class="settings-info-label">Email recuperare</span>
-              <strong id="settings-account-email">-</strong>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-title-row">
+              <h4 class="settings-section-title">Schimbare Nickname</h4>
+              <span id="settings-cooldown-badge" class="cooldown-badge available">Disponibil</span>
             </div>
-            <div class="settings-info-row">
-              <span class="settings-info-label">Nickname actual în joc</span>
-              <strong id="settings-current-nickname" class="gold-text">-</strong>
+            <p id="settings-cooldown-hint" class="settings-hint">
+              Nickname-ul afișat la masă poate fi schimbat o dată la 5 zile.
+            </p>
+
+            <form id="form-change-nickname" class="stack-form" autocomplete="off">
+              <div class="field-group">
+                <label for="input-settings-nickname" class="field-label">Noul Nickname (2–18 caractere)</label>
+                <input
+                  id="input-settings-nickname"
+                  type="text"
+                  class="text-input"
+                  placeholder="Introdu noul nume de jucător"
+                  minlength="2"
+                  maxlength="18"
+                  required
+                />
+              </div>
+              <button type="submit" id="btn-save-settings-nickname" class="btn btn-primary">
+                Salvează Noul Nickname
+              </button>
+            </form>
+          </div>
+
+          <div class="settings-section">
+            <h4 class="settings-section-title">🔒 Schimbare Parolă</h4>
+            <p class="settings-hint">
+              Actualizează parola contului tău direct de aici.
+            </p>
+            <form id="form-settings-password" class="stack-form" autocomplete="off">
+              <div class="field-group">
+                <label for="input-settings-new-pass" class="field-label">Parolă nouă (minim 6 caractere)</label>
+                <input
+                  id="input-settings-new-pass"
+                  type="password"
+                  class="text-input"
+                  placeholder="Minim 6 caractere"
+                  minlength="6"
+                  required
+                />
+              </div>
+              <div class="field-group">
+                <label for="input-settings-confirm-pass" class="field-label">Confirmă parola nouă</label>
+                <input
+                  id="input-settings-confirm-pass"
+                  type="password"
+                  class="text-input"
+                  placeholder="Repetă parola nouă"
+                  minlength="6"
+                  required
+                />
+              </div>
+              <button type="submit" id="btn-save-settings-pass" class="btn btn-outline">
+                Actualizează Parola
+              </button>
+            </form>
+          </div>
+        </div>
+
+        <!-- PANE 2: Preferințe Joc & Aspect Masă -->
+        <div id="settings-pane-gameplay" class="settings-pane hidden">
+          <div class="settings-section">
+            <h4 class="settings-section-title">👆 Mod Punere Carte (Protecție Anti-Misclick)</h4>
+            <p class="settings-hint">
+              Pe telefon, modul cu 2 atingeri previne trimiterea din greșeală a unei cărți alăturate.
+            </p>
+            <div class="choice-pills-row">
+              <button type="button" class="pref-pill" data-pref-confirm="single">
+                ⚡ Rapid (1 Click / Tap)
+              </button>
+              <button type="button" class="pref-pill" data-pref-confirm="double">
+                🛡️ Sigur (2 Click-uri / Tap-uri)
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h4 class="settings-section-title">🃏 Ordinea Cărților în Mână</h4>
+            <p class="settings-hint">
+              Alege cum vrei să fie sortate valorile pe fiecare culoare în mâna ta.
+            </p>
+            <div class="choice-pills-row">
+              <button type="button" class="pref-pill" data-pref-sort="asc">
+                Crescător (mic → As)
+              </button>
+              <button type="button" class="pref-pill" data-pref-sort="desc">
+                Descrescător (As → mic)
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <h4 class="settings-section-title">🎨 Culoarea Postavului Mesei</h4>
+            <div class="theme-swatches-grid">
+              <button type="button" class="theme-swatch" data-pref-theme="emerald">
+                <span class="swatch-dot emerald"></span>
+                <span>Smarald Clasic</span>
+              </button>
+              <button type="button" class="theme-swatch" data-pref-theme="royal">
+                <span class="swatch-dot royal"></span>
+                <span>Albastru Royal</span>
+              </button>
+              <button type="button" class="theme-swatch" data-pref-theme="burgundy">
+                <span class="swatch-dot burgundy"></span>
+                <span>Roșu Imperial</span>
+              </button>
+              <button type="button" class="theme-swatch" data-pref-theme="noir">
+                <span class="swatch-dot noir"></span>
+                <span>Antracit Noir</span>
+              </button>
             </div>
           </div>
         </div>
 
-        <div class="settings-section">
-          <div class="settings-title-row">
-            <h4 class="settings-section-title">Schimbare Nickname</h4>
-            <span id="settings-cooldown-badge" class="cooldown-badge available">Disponibil</span>
-          </div>
-          <p id="settings-cooldown-hint" class="settings-hint">
-            Nickname-ul afișat la masă poate fi schimbat o dată la 5 zile.
-          </p>
-
-          <form id="form-change-nickname" class="stack-form" autocomplete="off">
-            <div class="field-group">
-              <label for="input-settings-nickname" class="field-label">Noul Nickname (2–18 caractere)</label>
-              <input
-                id="input-settings-nickname"
-                type="text"
-                class="text-input"
-                placeholder="Introdu noul nume de jucător"
-                minlength="2"
-                maxlength="18"
-                required
-              />
+        <!-- PANE 3: Sunet, Vibrații & Aplicație Mobil -->
+        <div id="settings-pane-audio" class="settings-pane hidden">
+          <div class="settings-section">
+            <div class="settings-toggle-row">
+              <div>
+                <h4 class="settings-section-title">🔊 Efecte Sonore</h4>
+                <p class="settings-hint">Sunete discrete la cărți și notificări în timpul meciului.</p>
+              </div>
+              <input type="checkbox" id="chk-pref-sound" class="toggle-checkbox" checked />
             </div>
-            <button type="submit" id="btn-save-settings-nickname" class="btn btn-primary">
-              Salvează Noul Nickname
+
+            <div class="volume-row">
+              <label for="rng-pref-volume" class="field-label">
+                Volum: <strong id="lbl-pref-volume">70%</strong>
+              </label>
+              <div style="display:flex; align-items:center; gap:10px">
+                <input
+                  type="range"
+                  id="rng-pref-volume"
+                  min="0"
+                  max="100"
+                  step="5"
+                  value="70"
+                  style="flex:1; accent-color: var(--gold)"
+                />
+                <button type="button" id="btn-test-sound" class="btn btn-sm btn-ghost">
+                  🔊 Test
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-section">
+            <div class="settings-toggle-row">
+              <div>
+                <h4 class="settings-section-title">🔔 Alertă la Rândul Tău &amp; Ultimele 5s</h4>
+                <p class="settings-hint">Te anunță sonor când devine tura ta și când mai ai 5 secunde.</p>
+              </div>
+              <input type="checkbox" id="chk-pref-turn-alert" class="toggle-checkbox" checked />
+            </div>
+
+            <div class="settings-toggle-row" style="padding-top:8px; border-top:1px solid rgba(255,255,255,0.06)">
+              <div>
+                <h4 class="settings-section-title">📳 Vibrație pe Telefon la Rândul Tău</h4>
+                <p class="settings-hint">Vibrează scurt pe Android când îți vine rândul să muți.</p>
+              </div>
+              <input type="checkbox" id="chk-pref-vibrate" class="toggle-checkbox" checked />
+            </div>
+          </div>
+
+          <div id="settings-pwa-section" class="settings-section hidden">
+            <h4 class="settings-section-title">📱 Aplicație pe Telefon</h4>
+            <p class="settings-hint">
+              Instalează Rentz pe ecranul telefonului pentru a juca fără bara de adrese și butoanele browserului.
+            </p>
+            <button type="button" id="btn-settings-pwa-install" class="btn btn-secondary">
+              📱 Instalează Aplicația
             </button>
-          </form>
-        </div>
-
-        <div id="settings-pwa-section" class="settings-section hidden">
-          <h4 class="settings-section-title">📱 Aplicație pe Telefon</h4>
-          <p class="settings-hint">
-            Instalează Rentz pe ecranul telefonului pentru a juca fără bara de adrese și butoanele browserului.
-          </p>
-          <button type="button" id="btn-settings-pwa-install" class="btn btn-secondary">
-            📱 Instalează Aplicația
-          </button>
+          </div>
         </div>
       </div>
     </div>

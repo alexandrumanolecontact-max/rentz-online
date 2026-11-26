@@ -141,6 +141,23 @@ function validateEmail(raw) {
   return { ok: true, email };
 }
 
+function sanitizePreferences(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const validThemes = ['emerald', 'royal', 'burgundy', 'noir'];
+  return {
+    soundEnabled: src.soundEnabled !== false,
+    soundVolume:
+      typeof src.soundVolume === 'number'
+        ? Math.max(0, Math.min(100, Math.round(src.soundVolume)))
+        : 70,
+    turnAlert: src.turnAlert !== false,
+    vibrateOnTurn: src.vibrateOnTurn !== false,
+    confirmCardPlay: src.confirmCardPlay === 'double' ? 'double' : 'single',
+    handSort: src.handSort === 'desc' ? 'desc' : 'asc',
+    tableTheme: validThemes.includes(src.tableTheme) ? src.tableTheme : 'emerald',
+  };
+}
+
 function buildUserPayload(user, profile) {
   const accountUsername =
     profile?.username ||
@@ -159,13 +176,14 @@ function buildUserPayload(user, profile) {
     displayNameChangedAt,
     nextDisplayNameChangeAt,
     cooldownDays: NICKNAME_COOLDOWN_DAYS,
+    preferences: sanitizePreferences(profile?.preferences),
   };
 }
 
 async function fetchUserProfile(client, user) {
   const { data: profile } = await client
     .from('profiles')
-    .select('username, display_name, display_name_changed_at')
+    .select('username, display_name, display_name_changed_at, preferences')
     .eq('id', user.id)
     .maybeSingle();
 
@@ -322,7 +340,7 @@ async function setDisplayName({ accessToken, displayName: rawDisplayName }) {
     .from('profiles')
     .update({ display_name: dCheck.displayName })
     .eq('id', currentUser.id)
-    .select('username, display_name, display_name_changed_at')
+    .select('username, display_name, display_name_changed_at, preferences')
     .single();
 
   if (updateErr || !updated) {
@@ -335,6 +353,37 @@ async function setDisplayName({ accessToken, displayName: rawDisplayName }) {
       { id: currentUser.id, email: currentUser.email },
       updated
     ),
+  };
+}
+
+async function updateUserPreferences({ accessToken, preferences }) {
+  const verified = await verifyAccessToken(accessToken);
+  if (!verified.ok) return verified;
+
+  const authedClient = createAuthenticatedClient(accessToken);
+  if (!authedClient) {
+    return { ok: false, error: 'Autentificare neconfigurată.' };
+  }
+
+  const cleanPrefs = sanitizePreferences({
+    ...(verified.user.preferences || {}),
+    ...(preferences || {}),
+  });
+
+  const { data: updated, error } = await authedClient
+    .from('profiles')
+    .update({ preferences: cleanPrefs })
+    .eq('id', verified.user.id)
+    .select('username, display_name, display_name_changed_at, preferences')
+    .single();
+
+  if (error || !updated) {
+    return { ok: false, error: translateAuthError(error?.message) };
+  }
+
+  return {
+    ok: true,
+    preferences: sanitizePreferences(updated.preferences),
   };
 }
 
@@ -414,6 +463,7 @@ module.exports = {
   registerAccount,
   loginAccount,
   setDisplayName,
+  updateUserPreferences,
   requestPasswordReset,
   verifyAccessToken,
 };
