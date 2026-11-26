@@ -158,7 +158,45 @@ async function runTests() {
 
   game.destroy();
 
-  console.log('5. Verificare server Express + Socket.IO si fisiere frontend...');
+  console.log('5. Verificare timer 30s + delay 3s si alegere automata de carte valida...');
+  TIMERS.TURN_VISIBLE_MS = 60;
+  TIMERS.TURN_GRACE_MS = 60;
+  const timerGame = new RentzGame(players);
+  timerGame.chooseBlindMode('p1', false);
+  timerGame.chooseSubgame('p1', 'whist');
+  assert.strictEqual(timerGame.currentTurnPlayerId, 'p1');
+
+  // La 75ms suntem deja la secunda 0 vizibila (60ms), DAR inauntrul ferestrei de gratie (+60ms)!
+  await new Promise((r) => setTimeout(r, 75));
+  assert.strictEqual(
+    timerGame.getStateForPlayer('p1').turnRemainingMs,
+    0,
+    'Timerul vizibil a ajuns la 0'
+  );
+  assert.strictEqual(
+    timerGame.currentTrick.length,
+    0,
+    'In timpul delay-ului de gratie de dupa secunda 0 cartea NU trebuie jucata fortat inca!'
+  );
+  // Jucatorul p1 pune manual chiar in fereastra de gratie -> reuseste!
+  const p1Valid = timerGame.getPlayableTrickCards('p1');
+  assert.strictEqual(timerGame.playCard('p1', p1Valid[0]).ok, true);
+  assert.strictEqual(timerGame.currentTurnPlayerId, 'p2');
+
+  // Acum p2 NU pune nicio carte nici dupa expirarea completa (60ms + 60ms = 120ms) -> serverul joaca automat o carte valida!
+  const p2ValidBefore = timerGame.getPlayableTrickCards('p2');
+  await new Promise((r) => setTimeout(r, 150));
+  assert.strictEqual(timerGame.currentTrick.length, 2, 'p2 trebuia sa puna automat o carte!');
+  assert(
+    p2ValidBefore.includes(timerGame.currentTrick[1].card.id),
+    'Cartea aleasa automat trebuie sa fie din cartile valide disponibile acelei maini!'
+  );
+  assert.strictEqual(timerGame.currentTurnPlayerId, 'p3');
+  timerGame.destroy();
+  TIMERS.TURN_VISIBLE_MS = 30000;
+  TIMERS.TURN_GRACE_MS = 3000;
+
+  console.log('6. Verificare server Express + Socket.IO si fisiere frontend...');
   const { server, io } = require('../server/index');
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const port = server.address().port;

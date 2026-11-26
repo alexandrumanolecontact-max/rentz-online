@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const {
   CARDS_PER_PLAYER,
   SUITS,
@@ -39,6 +40,8 @@ class RentzGame {
     this.lastRoundSummary = null;
     this.summaryContinueSet = new Set();
     this.pendingTimer = null;
+    this.turnTimer = null;
+    this.turnStartedAt = null;
 
     // Stare curentă de rundă
     this.phase = 'deciding_blind';
@@ -69,16 +72,83 @@ class RentzGame {
   }
 
   destroy() {
-    if (this.pendingTimer) {
-      clearTimeout(this.pendingTimer);
-      this.pendingTimer = null;
-    }
+    this.clearPendingTimer();
+    this.clearTurnTimer();
   }
 
   clearPendingTimer() {
     if (this.pendingTimer) {
       clearTimeout(this.pendingTimer);
       this.pendingTimer = null;
+    }
+  }
+
+  clearTurnTimer() {
+    if (this.turnTimer) {
+      clearTimeout(this.turnTimer);
+      this.turnTimer = null;
+    }
+    this.turnStartedAt = null;
+  }
+
+  armTurnTimer() {
+    this.clearTurnTimer();
+    if (
+      (this.phase !== 'playing_tricks' && this.phase !== 'playing_rentz') ||
+      !this.currentTurnPlayerId
+    ) {
+      return;
+    }
+
+    this.turnStartedAt = Date.now();
+    const totalTimeoutMs = TIMERS.TURN_VISIBLE_MS + TIMERS.TURN_GRACE_MS;
+    this.turnTimer = setTimeout(() => {
+      this.turnTimer = null;
+      this.handleTurnTimeout();
+    }, totalTimeoutMs);
+  }
+
+  handleTurnTimeout() {
+    if (
+      (this.phase !== 'playing_tricks' && this.phase !== 'playing_rentz') ||
+      !this.currentTurnPlayerId
+    ) {
+      return;
+    }
+
+    const playerId = this.currentTurnPlayerId;
+    const player = this.getPlayerById(playerId);
+
+    if (this.phase === 'playing_tricks') {
+      const validIds = this.getPlayableTrickCards(playerId);
+      if (validIds.length === 0) return;
+      const chosenCardId = validIds[crypto.randomInt(0, validIds.length)];
+      const prevTrickLen = this.currentTrick.length;
+      const res = this.playTrickCard(playerId, chosenCardId);
+      if (res.ok) {
+        if (prevTrickLen + 1 < this.numPlayers && this.phase === 'playing_tricks') {
+          const nextPlayer = this.getPlayerById(this.currentTurnPlayerId);
+          this.statusBanner = `⏱️ Timp expirat pentru ${player.nickname} (carte aleasă automat) — Rândul lui ${nextPlayer.nickname}`;
+        }
+        this.onStateChange();
+      }
+      return;
+    }
+
+    if (this.phase === 'playing_rentz') {
+      const validIds = this.getPlayableRentzCards(playerId);
+      if (validIds.length > 0) {
+        const chosenCardId = validIds[crypto.randomInt(0, validIds.length)];
+        const res = this.playRentzCard(playerId, chosenCardId);
+        if (res.ok) {
+          this.onStateChange();
+        }
+      } else {
+        const res = this.passRentzTurn(playerId);
+        if (res.ok) {
+          this.onStateChange();
+        }
+      }
     }
   }
 
@@ -98,6 +168,7 @@ class RentzGame {
 
   startNextRound() {
     this.clearPendingTimer();
+    this.clearTurnTimer();
 
     if (this.roundNumber >= this.totalRounds) {
       this.phase = 'game_over';
@@ -205,6 +276,7 @@ class RentzGame {
       const centerLabel = RANK_LABELS[this.centerRank];
       this.rentzLastAction = `${chooser.nickname} a ales Rentz${blindTag}! Fiecare culoare se deschide cu ${centerLabel}.`;
       this.statusBanner = this.rentzLastAction;
+      this.armTurnTimer();
     } else {
       this.phase = 'playing_tricks';
       this.trickNumber = 1;
@@ -212,6 +284,7 @@ class RentzGame {
       this.currentTurnPlayerId = this.chooserId;
       this.currentTrick = [];
       this.statusBanner = `${chooser.nickname} a ales ${subgame.name}${blindTag}. ${chooser.nickname} deschide mâna!`;
+      this.armTurnTimer();
     }
 
     return { ok: true };
@@ -277,6 +350,7 @@ class RentzGame {
     }
 
     const [card] = hand.splice(cardIdx, 1);
+    this.clearTurnTimer();
     const player = this.getPlayerById(playerId);
     this.currentTrick.push({
       playerId,
@@ -289,6 +363,7 @@ class RentzGame {
       this.currentTurnPlayerId = this.getNextPlayerId(playerId);
       const nextPlayer = this.getPlayerById(this.currentTurnPlayerId);
       this.statusBanner = `Rândul lui ${nextPlayer.nickname}`;
+      this.armTurnTimer();
       return { ok: true };
     }
 
@@ -405,6 +480,7 @@ class RentzGame {
     this.phase = 'playing_tricks';
     const winner = this.getPlayerById(winnerId);
     this.statusBanner = `Mâna ${this.trickNumber}/${CARDS_PER_PLAYER} — ${winner.nickname} deschide!`;
+    this.armTurnTimer();
   }
 
   checkTrickEarlyEnd() {
@@ -512,6 +588,7 @@ class RentzGame {
     const hand = this.hands[playerId];
     const cardIdx = hand.findIndex((c) => c.id === cardId);
     const [card] = hand.splice(cardIdx, 1);
+    this.clearTurnTimer();
     const player = this.getPlayerById(playerId);
 
     // Actualizăm coloana culorii pe masă
@@ -568,6 +645,7 @@ class RentzGame {
     }
 
     this.statusBanner = this.rentzLastAction;
+    this.armTurnTimer();
     return { ok: true };
   }
 
@@ -583,16 +661,19 @@ class RentzGame {
       return { ok: false, error: 'Nu poți spune Pas când ai cel puțin o carte validă de pus!' };
     }
 
+    this.clearTurnTimer();
     const player = this.getPlayerById(playerId);
     const next = this.getNextActiveRentzPlayer(playerId);
     this.currentTurnPlayerId = next ? next.id : null;
     this.rentzLastAction = `${player.nickname} a spus Pas (fără mutare validă).`;
     this.statusBanner = this.rentzLastAction;
+    this.armTurnTimer();
     return { ok: true };
   }
 
   finishRound(inputDeltas, reason, { alreadyAppliedToScores = false } = {}) {
     this.clearPendingTimer();
+    this.clearTurnTimer();
 
     const deltas = {};
     const totalsAfter = {};
@@ -695,6 +776,14 @@ class RentzGame {
       playableCardIds.length === 0;
 
     const viewerHand = this.hands[viewerId] || [];
+    const hasActiveTurnTimer =
+      (this.phase === 'playing_tricks' || this.phase === 'playing_rentz') &&
+      Boolean(this.currentTurnPlayerId) &&
+      Boolean(this.turnStartedAt);
+
+    const turnRemainingMs = hasActiveTurnTimer
+      ? Math.max(0, TIMERS.TURN_VISIBLE_MS - (Date.now() - this.turnStartedAt))
+      : null;
 
     return {
       phase: this.phase,
@@ -706,6 +795,8 @@ class RentzGame {
       cardsRevealed: this.cardsRevealed,
       leadPlayerId: this.leadPlayerId,
       currentTurnPlayerId: this.currentTurnPlayerId,
+      turnRemainingMs,
+      turnTotalMs: hasActiveTurnTimer ? TIMERS.TURN_VISIBLE_MS : null,
       trickNumber: this.trickNumber,
       trickWinnerId: this.trickWinnerId,
       lastTrickPoints: this.lastTrickPoints,

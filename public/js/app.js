@@ -12,7 +12,11 @@ const state = {
   room: null,
   authConfigured: true,
   inPasswordRecovery: false,
+  turnDeadlinePerf: null,
+  turnTotalMs: 30000,
 };
+
+let turnTickerInterval = null;
 
 let supabaseClient = null;
 const socket = window.io({ autoConnect: false });
@@ -268,14 +272,64 @@ function handleRoomState(room) {
     showToast(room.notice, false);
   }
   if (room.status === 'lobby') {
+    stopTurnTicker();
     renderLobby(room);
     showScreen('lobby');
   } else if (room.status === 'in_game' && room.game) {
+    syncTurnTimerFromGame(room.game);
     renderGame(room);
     showScreen('game');
     if (!modalScores.classList.contains('hidden')) {
       renderScoresModal(room.game);
     }
+  }
+}
+
+function stopTurnTicker() {
+  state.turnDeadlinePerf = null;
+  if (turnTickerInterval) {
+    clearInterval(turnTickerInterval);
+    turnTickerInterval = null;
+  }
+}
+
+function syncTurnTimerFromGame(g) {
+  if (typeof g.turnRemainingMs === 'number' && g.turnTotalMs) {
+    state.turnDeadlinePerf = performance.now() + g.turnRemainingMs;
+    state.turnTotalMs = g.turnTotalMs;
+    if (!turnTickerInterval) {
+      turnTickerInterval = setInterval(updateLiveTurnTimerDOM, 200);
+    }
+  } else {
+    stopTurnTicker();
+  }
+}
+
+function getTurnTimerSnapshot() {
+  if (state.turnDeadlinePerf === null) return null;
+  const remMs = Math.max(0, state.turnDeadlinePerf - performance.now());
+  const secs = Math.ceil(remMs / 1000);
+  // Când remMs e aproape 0, afișăm 0s pe durata celor 3 secunde de grație
+  const displaySecs = remMs <= 50 ? 0 : secs;
+  const pct = Math.max(0, Math.min(100, (remMs / (state.turnTotalMs || 30000)) * 100));
+  const tone = displaySecs <= 5 ? 'urgent' : displaySecs <= 10 ? 'warn' : '';
+  return { displaySecs, pct, tone };
+}
+
+function updateLiveTurnTimerDOM() {
+  const snap = getTurnTimerSnapshot();
+  if (!snap) return;
+
+  const pill = document.getElementById('active-turn-timer-pill');
+  if (pill) {
+    pill.textContent = `⏱ ${snap.displaySecs}s`;
+    pill.className = `turn-timer-pill${snap.tone ? ` ${snap.tone}` : ''}`;
+  }
+
+  const fill = document.getElementById('active-turn-progress-fill');
+  if (fill) {
+    fill.style.width = `${snap.pct}%`;
+    fill.className = `turn-progress-fill${snap.tone ? ` ${snap.tone}` : ''}`;
   }
 }
 
@@ -697,6 +751,8 @@ function renderGame(room) {
   const me = rotated[0];
   const opponents = rotated.slice(1);
 
+  const timerSnap = getTurnTimerSnapshot();
+
   opponentsRing.innerHTML = '';
   for (const opp of opponents) {
     const isTurn = g.currentTurnPlayerId === opp.id;
@@ -704,6 +760,19 @@ function renderGame(room) {
     const scoreClass = opp.score > 0 ? 'pos' : opp.score < 0 ? 'neg' : '';
     const seatEl = document.createElement('div');
     seatEl.className = `opponent-seat${isTurn ? ' active-turn' : ''}`;
+    const timerBadgeHtml =
+      isTurn && timerSnap
+        ? `<span id="active-turn-timer-pill" class="turn-timer-pill${
+            timerSnap.tone ? ` ${timerSnap.tone}` : ''
+          }">⏱ ${timerSnap.displaySecs}s</span>`
+        : '';
+    const timerBarHtml =
+      isTurn && timerSnap
+        ? `<div class="turn-progress-track"><div id="active-turn-progress-fill" class="turn-progress-fill${
+            timerSnap.tone ? ` ${timerSnap.tone}` : ''
+          }" style="width:${timerSnap.pct}%"></div></div>`
+        : '';
+
     seatEl.innerHTML = `
       <div class="seat-top-line">
         <span>${escapeHtml(opp.nickname)}${!opp.connected ? ' (offline)' : ''}</span>
@@ -713,8 +782,10 @@ function renderGame(room) {
         <span class="mini-chip">🂠 ${opp.cardCount}</span>
         ${isChooser ? '<span class="mini-chip">Alege</span>' : ''}
         ${isTurn ? '<span class="mini-chip turn-chip">La rând</span>' : ''}
+        ${timerBadgeHtml}
         ${renderCapturedBadges(opp, g.currentSubgame)}
       </div>
+      ${timerBarHtml}
     `;
     opponentsRing.appendChild(seatEl);
   }
@@ -722,12 +793,19 @@ function renderGame(room) {
   if (me) {
     const myTurn = g.currentTurnPlayerId === me.id;
     const myScoreClass = me.score > 0 ? 'pos' : me.score < 0 ? 'neg' : '';
+    const myTimerHtml =
+      myTurn && timerSnap
+        ? `<span id="active-turn-timer-pill" class="turn-timer-pill${
+            timerSnap.tone ? ` ${timerSnap.tone}` : ''
+          }">⏱ ${timerSnap.displaySecs}s</span>`
+        : '';
     mySeatBar.className = `my-seat-bar${myTurn ? ' my-turn' : ''}`;
     mySeatBar.innerHTML = `
       <strong>${escapeHtml(me.nickname)} (Tu)</strong>
       <span class="seat-score ${myScoreClass}">Scor: ${me.score}p</span>
       ${g.chooserId === me.id ? '<span class="mini-chip">Alegătorul rundei</span>' : ''}
       ${myTurn ? '<span class="mini-chip turn-chip">Este rândul tău!</span>' : ''}
+      ${myTimerHtml}
       ${renderCapturedBadges(me, g.currentSubgame)}
     `;
   }
